@@ -1,0 +1,17 @@
+apiVersion: 1
+
+datasources:
+  - name: TimescaleDB
+    type: postgres
+    access: proxy
+    url: timescaledb:5432
+    database: neo_db
+    user: neo_user
+    secureJsonData:
+      password: neo_password
+    jsonData:
+      sslmode: disable
+      postgresVersion: 1700
+      timescaledb: true
+    isDefault: true
+    editable: true
