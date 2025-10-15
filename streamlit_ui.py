@@ -86,7 +86,6 @@ def main():
         st.cache_data.clear()
         st.rerun()
     
-    # Overview Page
     if page == "Overview":
         show_overview()
     elif page == "Raw Data":
@@ -104,7 +103,6 @@ def show_overview():
     try:
         stats = get_summary_stats()
         
-        # Key metrics
         col1, col2, col3, col4 = st.columns(4)
         
         with col1:
@@ -120,7 +118,6 @@ def show_overview():
         
         st.markdown("---")
         
-        # Daily metrics visualization
         daily = load_daily_metrics()
         
         if not daily.empty:

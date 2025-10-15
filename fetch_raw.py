@@ -25,7 +25,7 @@ DB_PASSWORD = os.getenv('DB_PASSWORD', 'neo_password')
 
 def wait_for_services():
     """Wait for Kafka and DB to be ready"""
-    print("Waiting for services to be ready...")
+    print("⏳ Waiting for services to be ready...")
     max_retries = 30
     
     # Wait for Kafka
@@ -42,6 +42,7 @@ def wait_for_services():
         except Exception as e:
             if i == max_retries - 1:
                 raise Exception(f"Kafka not ready after {max_retries} attempts")
+            print(f"  Waiting for Kafka... ({i+1}/{max_retries})")
             time.sleep(2)
     
     # Wait for DB
@@ -57,6 +58,7 @@ def wait_for_services():
         except Exception as e:
             if i == max_retries - 1:
                 raise Exception(f"Database not ready after {max_retries} attempts")
+            print(f"  Waiting for Database... ({i+1}/{max_retries})")
             time.sleep(2)
 
 def fetch_nasa_data(start_date, end_date):
@@ -68,38 +70,12 @@ def fetch_nasa_data(start_date, end_date):
         'api_key': NASA_API_KEY
     }
     
-    print(f"Fetching data from {start_date} to {end_date}...")
     response = requests.get(url, params=params, timeout=30)
     
     if response.status_code == 200:
         return response.json()
     else:
         raise Exception(f"API Error: {response.status_code} - {response.text}")
-
-def fetch_data_in_chunks(start_date_str, end_date_str):
-    """Fetch data in 7-day chunks (API limit)"""
-    start = datetime.strptime(start_date_str, '%Y-%m-%d')
-    end = datetime.strptime(end_date_str, '%Y-%m-%d')
-    
-    all_objects = []
-    current_start = start
-    
-    while current_start <= end:
-        current_end = min(current_start + timedelta(days=6), end)
-        
-        chunk_start = current_start.strftime('%Y-%m-%d')
-        chunk_end = current_end.strftime('%Y-%m-%d')
-        
-        data = fetch_nasa_data(chunk_start, chunk_end)
-        
-        if data and 'near_earth_objects' in data:
-            for date, asteroids in data['near_earth_objects'].items():
-                all_objects.extend(asteroids)
-        
-        current_start = current_end + timedelta(days=1)
-        time.sleep(1)  # Rate limiting
-    
-    return all_objects
 
 def flatten_asteroid(asteroid):
     """Flatten nested asteroid structure"""
@@ -184,70 +160,175 @@ def insert_raw_data(conn, records):
     
     return len(values)
 
-def main():
-    print("=" * 60)
-    print("NASA NEO Data Fetcher & Kafka Producer")
-    print("=" * 60)
+def process_and_stream_chunk(producer, conn, chunk_start, chunk_end, total_stats):
+    """Fetch, process, and stream data for a date range chunk"""
+    print(f"\n📅 Processing date range: {chunk_start} to {chunk_end}")
+    print(f"   ⬇️  Fetching data from NASA API...")
     
+    # Fetch data from NASA
+    data = fetch_nasa_data(chunk_start, chunk_end)
+    
+    if not data or 'near_earth_objects' not in data:
+        print(f"   ⚠️  No data returned for this range")
+        return
+    
+    # Process each date's data
+    chunk_total = 0
+    chunk_records = []
+    
+    for date, asteroids in sorted(data['near_earth_objects'].items()):
+        date_count = len(asteroids)
+        chunk_total += date_count
+        
+        print(f"   📊 {date}: Found {date_count} asteroids")
+        
+        # Process and stream each asteroid immediately
+        for i, asteroid in enumerate(asteroids, 1):
+            flat = flatten_asteroid(asteroid)
+            chunk_records.append(flat)
+            
+            # Send to Kafka immediately
+            try:
+                producer.send(KAFKA_TOPIC, flat)
+                total_stats['kafka_sent'] += 1
+            except Exception as e:
+                print(f"      ✗ Failed to send to Kafka: {str(e)}")
+                total_stats['kafka_failed'] += 1
+        
+        print(f"      ✓ Streamed {date_count} records to Kafka")
+    
+    # Flush Kafka producer to ensure all messages are sent
+    producer.flush()
+    print(f"   ✓ Kafka flush completed")
+    
+    # Batch insert to database for this chunk
+    if chunk_records:
+        print(f"   💾 Inserting {len(chunk_records)} records to database...")
+        inserted = insert_raw_data(conn, chunk_records)
+        total_stats['db_inserted'] += inserted
+        print(f"   ✓ Inserted {inserted} records to database")
+    
+    total_stats['total_asteroids'] += chunk_total
+    print(f"   ✅ Chunk complete: {chunk_total} asteroids processed")
+
+def main():
+    print("=" * 70)
+    print("🚀 NASA NEO Data Fetcher & Real-Time Kafka Streaming Producer")
+    print("=" * 70)
+    
+    # Wait for services
     wait_for_services()
     
     # Initialize Kafka Producer
-    print("\nInitializing Kafka producer...")
+    print("\n🔧 Initializing Kafka producer...")
     producer = KafkaProducer(
         bootstrap_servers=KAFKA_BOOTSTRAP,
         value_serializer=lambda v: json.dumps(v).encode('utf-8'),
         max_request_size=10485760,  # 10MB
-        compression_type='gzip'
+        compression_type='gzip',
+        acks='all',  # Wait for all replicas
+        retries=3
     )
+    print("✓ Kafka producer initialized")
     
     # Initialize DB connection
-    print("Connecting to database...")
+    print("🔧 Connecting to database...")
     conn = psycopg2.connect(
         host=DB_HOST, port=DB_PORT, dbname=DB_NAME,
         user=DB_USER, password=DB_PASSWORD
     )
+    print("✓ Database connection established")
+    
+    # Statistics tracking
+    total_stats = {
+        'total_asteroids': 0,
+        'kafka_sent': 0,
+        'kafka_failed': 0,
+        'db_inserted': 0
+    }
     
     try:
-        # Fetch data
-        print(f"\nFetching NEO data from {START_DATE} to {END_DATE}...")
-        asteroids = fetch_data_in_chunks(START_DATE, END_DATE)
-        print(f"✓ Fetched {len(asteroids)} asteroid records")
+        # Calculate date range
+        start = datetime.strptime(START_DATE, '%Y-%m-%d')
+        end = datetime.strptime(END_DATE, '%Y-%m-%d')
+        total_days = (end - start).days + 1
         
-        # Process and send data
-        print("\nProcessing and publishing data...")
-        flattened_records = []
-        sent_count = 0
+        print(f"\n📋 Configuration:")
+        print(f"   Date Range: {START_DATE} to {END_DATE} ({total_days} days)")
+        print(f"   Kafka Topic: {KAFKA_TOPIC}")
+        print(f"   API Key: {'DEMO_KEY' if NASA_API_KEY == 'DEMO_KEY' else 'Custom Key'}")
         
-        for asteroid in asteroids:
-            flat = flatten_asteroid(asteroid)
-            flattened_records.append(flat)
+        print(f"\n{'='*70}")
+        print("🔄 Starting real-time data streaming...")
+        print(f"{'='*70}")
+        
+        # Process data in 7-day chunks (API limit)
+        current_start = start
+        chunk_number = 0
+        
+        while current_start <= end:
+            chunk_number += 1
+            current_end = min(current_start + timedelta(days=6), end)
             
-            # Send to Kafka
-            future = producer.send(KAFKA_TOPIC, flat)
-            sent_count += 1
+            chunk_start_str = current_start.strftime('%Y-%m-%d')
+            chunk_end_str = current_end.strftime('%Y-%m-%d')
             
-            if sent_count % 100 == 0:
-                print(f"  Sent {sent_count}/{len(asteroids)} records to Kafka")
+            print(f"\n{'─'*70}")
+            print(f"📦 Chunk {chunk_number}")
+            
+            # Process and stream this chunk
+            process_and_stream_chunk(
+                producer, conn, 
+                chunk_start_str, chunk_end_str, 
+                total_stats
+            )
+            
+            # Move to next chunk
+            current_start = current_end + timedelta(days=1)
+            
+            # Rate limiting between chunks
+            if current_start <= end:
+                print(f"   ⏸️  Rate limiting: waiting 1 second...")
+                time.sleep(1)
         
-        producer.flush()
-        print(f"✓ Published {sent_count} records to Kafka topic: {KAFKA_TOPIC}")
+        # Final summary
+        print(f"\n{'='*70}")
+        print("✅ SUCCESS: All data processed and streamed!")
+        print(f"{'='*70}")
+        print(f"\n📊 Final Statistics:")
+        print(f"   Total Asteroids Processed: {total_stats['total_asteroids']}")
+        print(f"   Kafka Messages Sent: {total_stats['kafka_sent']}")
+        print(f"   Kafka Messages Failed: {total_stats['kafka_failed']}")
+        print(f"   Database Records Inserted: {total_stats['db_inserted']}")
+        print(f"   Kafka Topic: {KAFKA_TOPIC}")
         
-        # Insert raw data into DB
-        print("\nInserting raw data into database...")
-        inserted = insert_raw_data(conn, flattened_records)
-        print(f"✓ Inserted {inserted} records into neo_raw table")
+        if total_stats['kafka_failed'] > 0:
+            print(f"\n⚠️  Warning: {total_stats['kafka_failed']} messages failed to send to Kafka")
         
-        print("\n" + "=" * 60)
-        print("SUCCESS: Data fetched, published to Kafka, and stored in DB")
-        print("=" * 60)
-        print(f"\nNext step: Run '2_kafka_consumer.py' to verify Kafka messages")
+        print(f"\n{'='*70}")
+        print("📌 Next Steps:")
+        print("   1. Run 'python kafka_consumer.py' to verify Kafka messages")
+        print("   2. Check database: SELECT COUNT(*) FROM neo_raw;")
+        print(f"{'='*70}\n")
         
+    except KeyboardInterrupt:
+        print(f"\n\n⚠️  Process interrupted by user")
+        print(f"📊 Statistics at interruption:")
+        print(f"   Asteroids: {total_stats['total_asteroids']}")
+        print(f"   Kafka Sent: {total_stats['kafka_sent']}")
+        print(f"   DB Inserted: {total_stats['db_inserted']}")
     except Exception as e:
-        print(f"\n✗ ERROR: {str(e)}")
+        print(f"\n{'='*70}")
+        print(f"✗ ERROR: {str(e)}")
+        print(f"{'='*70}")
+        import traceback
+        traceback.print_exc()
         raise
     finally:
+        print("\n🔧 Cleaning up...")
         producer.close()
         conn.close()
+        print("✓ Connections closed")
 
 if __name__ == "__main__":
     main()
