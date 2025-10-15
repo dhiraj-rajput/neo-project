@@ -1,5 +1,4 @@
 services:
-  # Kafka with KRaft (no Zookeeper)
   kafka:
     image: apache/kafka:3.9.0
     container_name: kafka
@@ -25,12 +24,11 @@ services:
     healthcheck:
       test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092"]
       interval: 10s
-      timeout: 5s
+      timeout: 20s
       retries: 5
     networks:
       - neo-network
 
-  # TimescaleDB (PostgreSQL with time-series extension)
   timescaledb:
     image: timescale/timescaledb:latest-pg17
     container_name: timescaledb
@@ -52,7 +50,6 @@ services:
     networks:
       - neo-network
 
-  # Grafana for visualization
   grafana:
     image: grafana/grafana:11.3.1
     container_name: grafana
@@ -70,7 +67,6 @@ services:
     networks:
       - neo-network
 
-  # Python application container
   neo-app:
     build: .
     container_name: neo-app
@@ -98,7 +94,6 @@ services:
     networks:
       - neo-network
 
-  # Web UI for monitoring
   neo-ui:
     image: python:3.12-slim
     container_name: neo-ui
