@@ -19,7 +19,7 @@ DB_NAME = os.getenv('DB_NAME', 'neo_db')
 DB_USER = os.getenv('DB_USER', 'neo_user')
 DB_PASSWORD = os.getenv('DB_PASSWORD', 'neo_password')
 CHECKPOINT_DIR = os.getenv('CHECKPOINT_DIR', '/tmp/spark-checkpoint')
-BATCH_SIZE = int(os.getenv('BATCH_SIZE', 200))
+BATCH_SIZE = int(os.getenv('BATCH_SIZE', 1000))
 TRIGGER_INTERVAL = os.getenv('TRIGGER_INTERVAL', '30 seconds')
 
 schema = StructType([
