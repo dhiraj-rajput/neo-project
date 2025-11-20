@@ -1,7 +1,3 @@
-"""
-Step 5: Streamlit UI for monitoring
-Run: streamlit run 5_streamlit_ui.py --server.port 8501 --server.address 0.0.0.0
-"""
 import os
 import streamlit as st
 import pandas as pd
