@@ -721,9 +721,8 @@
         },
         "pieType": "pie",
         "reduceOptions": {
-          "calcs": ["lastNotNull"],
-          "fields": "",
-          "values": false
+          "values": true,
+          "calcs": []
         },
         "tooltip": {
           "mode": "single",
@@ -737,7 +736,7 @@
             "uid": "TimescaleDB"
           },
           "format": "table",
-          "rawSql": "SELECT\n  CASE \n    WHEN is_potentially_hazardous = TRUE THEN 'Hazardous'\n    ELSE 'Non-Hazardous'\n  END as category,\n  COUNT(*) as count\nFROM neo_processed\nWHERE close_approach_date BETWEEN $__timeFrom() AND $__timeTo()\nGROUP BY is_potentially_hazardous",
+          "rawSql": "SELECT \n CASE \n WHEN is_potentially_hazardous = TRUE THEN 'Hazardous' \n ELSE 'Non-Hazardous' \n END AS category, \n COUNT(*) AS count \n FROM neo_processed \n WHERE close_approach_date BETWEEN $__timeFrom() AND $__timeTo()\nGROUP BY category\nORDER BY category;",
           "refId": "A"
         }
       ],
@@ -782,9 +781,8 @@
         },
         "pieType": "pie",
         "reduceOptions": {
-          "calcs": ["lastNotNull"],
-          "fields": "",
-          "values": false
+          "calcs": [],
+          "values": true
         },
         "tooltip": {
           "mode": "single",
@@ -863,79 +861,6 @@
       ],
       "title": "Anomaly Count Over Time",
       "type": "barchart"
-    },
-    {
-      "datasource": {
-        "type": "postgres",
-        "uid": "TimescaleDB"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "continuous-RdYlGn",
-            "seriesBy": "last"
-          },
-          "custom": {
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "Diameter (km)",
-            "axisPlacement": "auto",
-            "fillOpacity": 70,
-            "gradientMode": "scheme",
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
-            },
-            "lineWidth": 1,
-            "scaleDistribution": {
-              "type": "linear"
-            }
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              }
-            ]
-          }
-        }
-      },
-      "gridPos": {
-        "h": 10,
-        "w": 24,
-        "x": 0,
-        "y": 46
-      },
-      "id": 8,
-      "options": {
-        "legend": {
-          "calcs": [],
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": false
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "none"
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "postgres",
-            "uid": "TimescaleDB"
-          },
-          "format": "table",
-          "rawSql": "SELECT\n  relative_velocity_km_s,\n  diameter_mean_km,\n  risk_score,\n  name\nFROM neo_processed\nWHERE close_approach_date BETWEEN $__timeFrom() AND $__timeTo()\n  AND relative_velocity_km_s IS NOT NULL\n  AND diameter_mean_km IS NOT NULL\n  AND risk_score IS NOT NULL\nLIMIT 5000",
-          "refId": "A"
-        }
-      ],
-      "title": "Velocity vs Diameter (Risk Score Colored)",
-      "type": "xychart"
     },
     {
       "datasource": {
@@ -1469,7 +1394,128 @@
       ],
       "title": "Velocity Metrics Over Time",
       "type": "timeseries"
+    },
+    {
+  "datasource": {
+    "type": "postgres",
+    "uid": "TimescaleDB"
+  },
+  "fieldConfig": {
+    "defaults": {
+      "color": {
+        "mode": "continuous-RdYlGr"
+      },
+      "custom": {
+        "axisCenteredZero": false,
+        "axisColorMode": "text",
+        "axisLabel": "Diameter (km)",
+        "axisPlacement": "auto",
+        "hideFrom": {
+          "legend": false,
+          "tooltip": false,
+          "viz": false
+        }
+      },
+      "mappings": [],
+      "thresholds": {
+        "mode": "absolute",
+        "steps": [
+          {
+            "color": "green",
+            "value": null
+          }
+        ]
+      },
+      "unit": "lengthkm"
+    },
+    "overrides": [
+      {
+        "matcher": {
+          "id": "byName",
+          "options": "relative_velocity_km_s"
+        },
+        "properties": [
+          {
+            "id": "custom.axisLabel",
+            "value": "Relative Velocity (km/s)"
+          },
+          {
+            "id": "unit",
+            "value": "velocitykmh"
+          }
+        ]
+      }
+    ]
+  },
+  "gridPos": {
+    "h": 8,
+    "w": 24,
+    "x": 0,
+    "y": 99
+  },
+  "id": 114,
+  "options": {
+    "series": [
+      {
+        "name": "Asteroids",
+        "pointColor": {
+          "field": "risk_score"
+        },
+        "pointSize": {
+          "fixed": 5
+        },
+        "x": "diameter_mean_km",
+        "y": "relative_velocity_km_s"
+      }
+    ],
+    "dims": {
+      "x": {
+        "field": "diameter_mean_km",
+        "max": 5,
+        "min": 0
+      },
+      "y": {
+        "field": "relative_velocity_km_s",
+        "max": 30,
+        "min": 0
+      },
+      "color": {
+        "field": "risk_score",
+        "max": 1,
+        "min": 0
+      },
+      "series": {
+        "field": "name"
+      },
+      "size": {
+        "fixed": 5
+      }
+    },
+    "legend": {
+      "displayMode": "list",
+      "placement": "bottom",
+      "showLegend": true
+    },
+    "tooltip": {
+      "mode": "single",
+      "showColorScale": true,
+      "sort": "none"
     }
+  },
+  "targets": [
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "TimescaleDB"
+      },
+      "format": "table",
+      "rawSql": "SELECT\n  relative_velocity_km_s::float AS relative_velocity_km_s,\n  diameter_mean_km::float AS diameter_mean_km,\n  risk_score::float AS risk_score,\n  name\nFROM neo_processed\nWHERE close_approach_date BETWEEN $__timeFrom() AND $__timeTo()\n  AND relative_velocity_km_s IS NOT NULL\n  AND diameter_mean_km IS NOT NULL\n  AND risk_score IS NOT NULL",
+      "refId": "A"
+    }
+  ],
+  "title": "Velocity vs Diameter (color: Risk Score)",
+  "type": "xychart"
+}
   ],
   "schemaVersion": 39,
   "tags": ["neo", "asteroids", "nasa"],
