@@ -1,0 +1,28 @@
+# Environment variables
+.env
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+
+# IDEs
+.vscode/
+.idea/
+.DS_Store
+
+# Logs
+*.log
+
+# Docker
+docker-compose.override.yml
+
+# Checkpoints
+spark-checkpoint/
+
+# Research and References
+reference.md
+references.bib
+research_paper.md
+research_paper.tex
