@@ -26,17 +26,30 @@ frontend/node_modules/
 frontend/.next/
 frontend/out/
 frontend/.turbo/
+frontend/.env
+frontend/.env.local
+frontend/.env.development.local
+frontend/.env.test.local
+frontend/.env.production.local
 
 # ── Docker ──────────────────────────────────────────
 docker-compose.override.yml
+*.db-journal
 
 # ── OS ──────────────────────────────────────────────
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
 Thumbs.db
 Desktop.ini
 
 # ── IDE ─────────────────────────────────────────────
+.vscode/
 .idea/
 *.swp
 *.swo
 *~
+.gemini/

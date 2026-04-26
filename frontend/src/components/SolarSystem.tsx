@@ -1,10 +1,11 @@
 'use client';
 
-import React, { useRef, useMemo, useCallback } from 'react';
-import { Canvas, useFrame } from '@react-three/fiber';
-import { OrbitControls, Stars, Text, Line, Sphere, Wireframe } from '@react-three/drei';
+import React, { useRef, useMemo, useCallback, useImperativeHandle } from 'react';
+import { Canvas, useFrame, useThree } from '@react-three/fiber';
+import { OrbitControls, Stars } from '@react-three/drei';
 import { EffectComposer, Bloom, Vignette } from '@react-three/postprocessing';
 import * as THREE from 'three';
+import { Sun, Planets, AsteroidBelt } from './three/SolarBodies';
 
 // ── Types ──────────────────────────────────────────────
 export interface AsteroidData {
@@ -15,136 +16,83 @@ export interface AsteroidData {
   estimated_diameter_km_max: number;
   relative_velocity_km_s: number;
   miss_distance_km: number;
+  absolute_magnitude_h?: number;
+  nasa_jpl_url?: string;
 }
 
-interface AsteroidProps {
-  data: AsteroidData;
-  onSelect: (data: AsteroidData) => void;
+export interface SolarSystemHandle {
+  flyTo: (asteroidId: string) => void;
 }
 
 interface SolarSystemProps {
   asteroids: AsteroidData[];
   onSelect: (data: AsteroidData | null) => void;
+  solarRef?: React.RefObject<SolarSystemHandle | null>;
 }
 
-// ── Holographic Earth ────────────────────────────────────
-function Earth() {
-  const meshRef = useRef<THREE.Mesh>(null);
+// ── Camera Controller with Fly-To ──────────────────────
+function CameraController({ targetPos, onArrived }: { targetPos: THREE.Vector3 | null; onArrived?: () => void }) {
+  const { camera } = useThree();
+  const arrivedRef = useRef(false);
 
   useFrame(() => {
-    if (meshRef.current) {
-      meshRef.current.rotation.y += 0.002;
+    if (!targetPos) { arrivedRef.current = false; return; }
+    if (arrivedRef.current) return;
+
+    const offset = targetPos.clone().add(new THREE.Vector3(3, 2, 5));
+    camera.position.lerp(offset, 0.02);
+
+    if (camera.position.distanceTo(offset) < 0.5) {
+      arrivedRef.current = true;
+      onArrived?.();
     }
   });
 
-  return (
-    <group>
-      {/* Earth Core */}
-      <Sphere ref={meshRef} args={[2, 64, 64]}>
-        <meshStandardMaterial
-          color="#002244"
-          emissive="#001122"
-          roughness={0.8}
-          metalness={0.8}
-          transparent
-          opacity={0.9}
-        />
-        {/* Holographic Wireframe Grid */}
-        <Wireframe 
-          simplify={true}
-          thickness={0.015}
-          stroke={"#00aaff"}
-          dash={true}
-          dashRepeats={8}
-          dashLength={0.2}
-        />
-      </Sphere>
-
-      {/* Atmospheric Glow Shell */}
-      <Sphere args={[2.2, 32, 32]}>
-        <meshBasicMaterial 
-          color="#00aaff" 
-          transparent 
-          opacity={0.05} 
-          side={THREE.BackSide} 
-          blending={THREE.AdditiveBlending}
-        />
-      </Sphere>
-      
-      <Sphere args={[2.05, 32, 32]}>
-        <meshBasicMaterial 
-          color="#0055ff" 
-          transparent 
-          opacity={0.15} 
-          blending={THREE.AdditiveBlending}
-        />
-      </Sphere>
-
-      <Text
-        position={[0, 3.8, 0]}
-        fontSize={0.6}
-        color="#00ccff"
-        anchorX="center"
-        anchorY="middle"
-        font="https://fonts.gstatic.com/s/jetbrainsmono/v20/tDbY2o-flEEny0FZhsfKu5WU4zr3E_BX0PnT8RD8yKxjPVmUsaaDhw.woff2"
-      >
-        EARTH [0,0,0]
-      </Text>
-    </group>
-  );
+  return null;
 }
 
-// ── Single Asteroid ────────────────────────────────────
-function Asteroid({ data, onSelect }: AsteroidProps) {
+// ── Single NEO Asteroid ────────────────────────────────
+function NEOAsteroid({
+  data,
+  onSelect,
+  positionsRef,
+}: {
+  data: AsteroidData;
+  onSelect: (d: AsteroidData) => void;
+  positionsRef: React.MutableRefObject<Map<string, THREE.Vector3>>;
+}) {
   const meshRef = useRef<THREE.Mesh>(null);
 
-  // Derive orbit params from real data — stable across renders
   const { radius, speed, angleOffset, inclination } = useMemo(() => {
     let hash = 0;
     for (let i = 0; i < data.asteroid_id.length; i++) {
       hash = (hash * 31 + data.asteroid_id.charCodeAt(i)) | 0;
     }
-    const pseudoRandom = Math.abs(hash % 1000) / 1000;
-
+    const pr = Math.abs(hash % 1000) / 1000;
     const lunarDist = data.miss_distance_km / 384400;
-    const r = Math.max(6, Math.min(80, lunarDist * 0.8));
+    const r = Math.max(10, Math.min(55, 9 + lunarDist * 0.5));
     return {
       radius: r,
-      speed: Math.max(0.002, Math.min(0.02, (data.relative_velocity_km_s / 30) * 0.01)),
-      angleOffset: pseudoRandom * Math.PI * 2,
-      inclination: (pseudoRandom - 0.5) * 0.6,
+      speed: Math.max(0.003, Math.min(0.015, (data.relative_velocity_km_s / 30) * 0.008)),
+      angleOffset: pr * Math.PI * 2,
+      inclination: (pr - 0.5) * 0.4,
     };
   }, [data.asteroid_id, data.miss_distance_km, data.relative_velocity_km_s]);
 
-  // Use intense emissive colors for the Bloom effect
-  const color = data.is_potentially_hazardous ? '#ff1100' : '#44bbff';
-  const emissiveColor = data.is_potentially_hazardous ? '#ff0000' : '#0088ff';
-  const emissiveIntensity = data.is_potentially_hazardous ? 4.0 : 1.5;
-  const size = Math.max(0.2, Math.min(1.2, (data.estimated_diameter_km_max || 0.1) * 2));
-
-  // Orbit ring points
-  const ringPoints = useMemo(() => {
-    const pts: [number, number, number][] = [];
-    for (let i = 0; i <= 128; i++) {
-      const a = (i / 128) * Math.PI * 2;
-      pts.push([
-        Math.cos(a) * radius,
-        Math.sin(a) * radius * inclination,
-        Math.sin(a) * radius,
-      ]);
-    }
-    return pts;
-  }, [radius, inclination]);
+  const color = data.is_potentially_hazardous ? '#ff2200' : '#44bbff';
+  const emissive = data.is_potentially_hazardous ? '#ff0000' : '#0077dd';
+  const emissiveIntensity = data.is_potentially_hazardous ? 3.0 : 1.2;
+  const size = Math.max(0.15, Math.min(0.8, (data.estimated_diameter_km_max || 0.05) * 1.5));
 
   useFrame(({ clock }) => {
-    if (meshRef.current) {
-      const t = clock.getElapsedTime() * speed + angleOffset;
-      meshRef.current.position.x = Math.cos(t) * radius;
-      meshRef.current.position.y = Math.sin(t) * radius * inclination;
-      meshRef.current.position.z = Math.sin(t) * radius;
-      meshRef.current.rotation.y += 0.01;
-      meshRef.current.rotation.x += 0.015;
-    }
+    if (!meshRef.current) return;
+    const t = clock.getElapsedTime() * speed + angleOffset;
+    const x = Math.cos(t) * radius;
+    const y = Math.sin(t) * radius * inclination;
+    const z = Math.sin(t) * radius;
+    meshRef.current.position.set(x, y, z);
+    meshRef.current.rotation.y += 0.01;
+    positionsRef.current.set(data.asteroid_id, new THREE.Vector3(x, y, z));
   });
 
   const handleClick = useCallback((e: { stopPropagation: () => void }) => {
@@ -153,90 +101,93 @@ function Asteroid({ data, onSelect }: AsteroidProps) {
   }, [data, onSelect]);
 
   return (
-    <group>
-      {/* Subtle glowing orbit ring */}
-      <Line
-        points={ringPoints}
+    <mesh
+      ref={meshRef}
+      onClick={handleClick}
+      onPointerOver={() => { document.body.style.cursor = 'crosshair'; }}
+      onPointerOut={() => { document.body.style.cursor = 'default'; }}
+    >
+      <dodecahedronGeometry args={[size, 1]} />
+      <meshStandardMaterial
         color={color}
-        lineWidth={0.5}
-        transparent
-        opacity={data.is_potentially_hazardous ? 0.3 : 0.1}
+        roughness={0.3}
+        metalness={0.7}
+        emissive={emissive}
+        emissiveIntensity={emissiveIntensity}
+        toneMapped={false}
       />
-
-      {/* Asteroid body */}
-      <mesh
-        ref={meshRef}
-        onClick={handleClick}
-        onPointerOver={() => { document.body.style.cursor = 'crosshair'; }}
-        onPointerOut={() => { document.body.style.cursor = 'default'; }}
-      >
-        <dodecahedronGeometry args={[size, 1]} />
-        <meshStandardMaterial
-          color={color}
-          roughness={0.3}
-          metalness={0.8}
-          emissive={emissiveColor}
-          emissiveIntensity={emissiveIntensity}
-          toneMapped={false} // Ensure bloom catches the emissive intensity
-        />
-        {/* Highlight ring for hazardous objects */}
-        {data.is_potentially_hazardous && (
-          <mesh>
-            <sphereGeometry args={[size * 1.3, 16, 16]} />
-            <meshBasicMaterial color="#ff0000" transparent opacity={0.2} wireframe />
-          </mesh>
-        )}
-      </mesh>
-    </group>
+      {data.is_potentially_hazardous && (
+        <mesh>
+          <sphereGeometry args={[size * 1.4, 12, 12]} />
+          <meshBasicMaterial color="#ff0000" transparent opacity={0.12} wireframe />
+        </mesh>
+      )}
+    </mesh>
   );
 }
 
-// ── Main Scene ─────────────────────────────────────────
-export default function SolarSystem({ asteroids, onSelect }: SolarSystemProps) {
+// ── Scene Content ──────────────────────────────────────
+function SceneContent({ asteroids, onSelect, solarRef }: SolarSystemProps) {
+  const positionsRef = useRef<Map<string, THREE.Vector3>>(new Map());
+  const [flyTarget, setFlyTarget] = React.useState<THREE.Vector3 | null>(null);
+
+  useImperativeHandle(solarRef, () => ({
+    flyTo: (asteroidId: string) => {
+      const pos = positionsRef.current.get(asteroidId);
+      if (pos) setFlyTarget(pos.clone());
+    },
+  }));
+
   return (
-    <Canvas
-      camera={{ position: [0, 40, 80], fov: 50 }}
-      gl={{ antialias: false, powerPreference: 'high-performance' }} // Anti-alias false recommended when using post-processing
-      dpr={[1, 1.5]}
-    >
+    <>
       <color attach="background" args={['#010104']} />
+      <ambientLight intensity={0.15} />
+      <Stars radius={300} depth={120} count={4000} factor={4} saturation={0} fade speed={0.5} />
 
-      {/* Lighting */}
-      <ambientLight intensity={0.2} />
-      <directionalLight position={[10, 20, 10]} intensity={1.0} color="#00aaff" />
-      <pointLight position={[0, 0, 0]} intensity={2.0} color="#0055ff" distance={50} />
+      <Sun />
+      <Planets />
+      <AsteroidBelt />
 
-      {/* Deep Space Stars */}
-      <Stars radius={200} depth={100} count={5000} factor={4} saturation={0} fade speed={1} />
-
-      <Earth />
-
-      {asteroids.map((ast) => (
-        <Asteroid key={ast.asteroid_id} data={ast} onSelect={onSelect} />
+      {asteroids.map((ast: AsteroidData) => (
+        <NEOAsteroid
+          key={ast.asteroid_id}
+          data={ast}
+          onSelect={onSelect}
+          positionsRef={positionsRef}
+        />
       ))}
 
+      <CameraController targetPos={flyTarget} onArrived={() => setFlyTarget(null)} />
+
       <OrbitControls
-        enablePan={true}
-        enableZoom={true}
-        enableRotate={true}
-        autoRotate={true}
-        autoRotateSpeed={0.5}
-        maxDistance={250}
-        minDistance={8}
-        enableDamping={true}
+        enablePan
+        enableZoom
+        enableRotate
+        autoRotate
+        autoRotateSpeed={0.3}
+        maxDistance={200}
+        minDistance={5}
+        enableDamping
         dampingFactor={0.05}
       />
 
-      {/* Sci-Fi Post Processing */}
       <EffectComposer>
-        <Bloom 
-          luminanceThreshold={0.5} 
-          mipmapBlur 
-          intensity={1.5} 
-          radius={0.8}
-        />
-        <Vignette eskil={false} offset={0.1} darkness={0.9} />
+        <Bloom luminanceThreshold={0.4} mipmapBlur intensity={1.2} radius={0.7} />
+        <Vignette eskil={false} offset={0.1} darkness={0.8} />
       </EffectComposer>
+    </>
+  );
+}
+
+// ── Main Canvas Wrapper ────────────────────────────────
+export default function SolarSystem({ asteroids, onSelect, solarRef }: SolarSystemProps) {
+  return (
+    <Canvas
+      camera={{ position: [0, 30, 60], fov: 50 }}
+      gl={{ antialias: false, powerPreference: 'high-performance' }}
+      dpr={[1, 1.5]}
+    >
+      <SceneContent asteroids={asteroids} onSelect={onSelect} solarRef={solarRef} />
     </Canvas>
   );
 }

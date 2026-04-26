@@ -46,3 +46,88 @@ CREATE TABLE IF NOT EXISTS neo_close_approaches_history (
 
 CREATE INDEX IF NOT EXISTS idx_history_asteroid_id ON neo_close_approaches_history (asteroid_id);
 CREATE INDEX IF NOT EXISTS idx_history_date ON neo_close_approaches_history (close_approach_date);
+
+-- ==========================================
+-- MULTI-AGENCY HISTORY TABLES
+-- ==========================================
+
+-- A. JPL SBDB History
+CREATE TABLE IF NOT EXISTS neo_agency_sbdb_history (
+    history_id SERIAL PRIMARY KEY,
+    asteroid_id TEXT NOT NULL,
+    orbit_class TEXT,
+    spkid TEXT,
+    epoch_tdb DOUBLE PRECISION,
+    data_arc_days INTEGER,
+    n_obs_used INTEGER,
+    condition_code TEXT,
+    moid_au DOUBLE PRECISION,
+    first_obs_date DATE,
+    last_obs_date DATE,
+    absolute_magnitude_h DOUBLE PRECISION,
+    diameter_km DOUBLE PRECISION,
+    albedo DOUBLE PRECISION,
+    discovery_date DATE,
+    discovery_site TEXT,
+    ingestion_time TIMESTAMPTZ,
+    row_hash TEXT,
+    archived_at TIMESTAMPTZ DEFAULT now(),
+    change_type TEXT
+);
+
+-- B. JPL Sentry History
+CREATE TABLE IF NOT EXISTS neo_agency_sentry_history (
+    history_id SERIAL PRIMARY KEY,
+    asteroid_id TEXT NOT NULL,
+    status TEXT,
+    impact_probability DOUBLE PRECISION,
+    torino_scale INTEGER,
+    palermo_scale DOUBLE PRECISION,
+    n_impacts INTEGER,
+    v_infinity_km_s DOUBLE PRECISION,
+    energy_mt DOUBLE PRECISION,
+    ingestion_time TIMESTAMPTZ,
+    row_hash TEXT,
+    archived_at TIMESTAMPTZ DEFAULT now(),
+    change_type TEXT
+);
+
+-- C. ESA NEOCC History
+CREATE TABLE IF NOT EXISTS neo_agency_esa_history (
+    history_id SERIAL PRIMARY KEY,
+    asteroid_id TEXT NOT NULL,
+    on_risk_list BOOLEAN,
+    priority_list INTEGER,
+    ingestion_time TIMESTAMPTZ,
+    row_hash TEXT,
+    archived_at TIMESTAMPTZ DEFAULT now(),
+    change_type TEXT
+);
+
+-- D. IAU MPC History
+CREATE TABLE IF NOT EXISTS neo_agency_mpc_history (
+    history_id SERIAL PRIMARY KEY,
+    asteroid_id TEXT NOT NULL,
+    status TEXT,
+    mpc_designation TEXT,
+    epoch DOUBLE PRECISION,
+    eccentricity DOUBLE PRECISION,
+    inclination DOUBLE PRECISION,
+    ingestion_time TIMESTAMPTZ,
+    row_hash TEXT,
+    archived_at TIMESTAMPTZ DEFAULT now(),
+    change_type TEXT
+);
+
+-- E. JPL CAD History
+CREATE TABLE IF NOT EXISTS neo_agency_cad_history (
+    history_id SERIAL PRIMARY KEY,
+    asteroid_id TEXT NOT NULL,
+    approach_date DATE NOT NULL,
+    distance_au DOUBLE PRECISION,
+    v_rel_km_s DOUBLE PRECISION,
+    ingestion_time TIMESTAMPTZ,
+    row_hash TEXT,
+    archived_at TIMESTAMPTZ DEFAULT now(),
+    change_type TEXT
+);

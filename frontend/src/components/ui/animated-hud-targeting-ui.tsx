@@ -2,12 +2,11 @@
 
 import type React from "react";
 import { motion } from "framer-motion";
-import { cn } from "@/lib/utils"
-import { useTheme } from "next-themes";
-import { useEffect, useState } from "react";
+import { cn } from "@/lib/utils";
 
 interface TargetingUIProps {
   className?: string;
+  style?: React.CSSProperties;
   pathColors?: {
     light?: string;
     dark?: string;
@@ -23,17 +22,10 @@ interface HudFrameProps {
 
 export function TargetingUI({
   className,
+  style,
   pathColors = { light: "white", dark: "white" }
 }: TargetingUIProps) {
-  const { theme } = useTheme();
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  const isDark = mounted ? theme === "dark" : true; 
-  const pathColor = isDark ? pathColors.dark : pathColors.light;
+  const pathColor = pathColors.dark || pathColors.light || "white";
   return (
     <svg 
       width="237" 
@@ -42,6 +34,7 @@ export function TargetingUI({
       fill="none" 
       xmlns="http://www.w3.org/2000/svg"
       className={className}
+      style={style}
     >
       <motion.g
         transform="translate(90, 50)"
