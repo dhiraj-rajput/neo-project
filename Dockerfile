@@ -7,7 +7,8 @@ WORKDIR /app
 RUN apt-get update && \
     apt-get install -y openjdk-17-jdk procps curl && \
     apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
+    rm -rf /var/lib/apt/lists/* && \
+    ln -s /usr/lib/jvm/java-17-openjdk-* /usr/lib/jvm/default-java
 
 # Set JAVA_HOME via standard Debian path
 ENV JAVA_HOME=/usr/lib/jvm/default-java

@@ -28,7 +28,17 @@ class CheckpointManager:
         
         # Ensure dir exists
         os.makedirs(self.run_dir, exist_ok=True)
-        # No more loading history from 'latest.json'
+        
+        # Load existing run data if it exists
+        if os.path.exists(self.filepath):
+            try:
+                with open(self.filepath, 'r') as f:
+                    data = json.load(f)
+                    # Convert list back to dict for easy lookup
+                    for w in data.get("windows_completed", []):
+                        self.windows[w["window_start"]] = w
+            except Exception as e:
+                logger.error(f"Failed to load checkpoint: {e}")
 
     def register_window(self, start, end, status="PENDING"):
         # Explicitly tracking every window this run
@@ -108,7 +118,8 @@ class CheckpointManager:
                 },
                 "termination_reason": termination_reason,
                 "stats": stats,
-                "windows": [w for w in ordered_windows if w["status"] != "SUCCESS"]
+                "windows_completed": [w for w in ordered_windows if w["status"] == "SUCCESS"],
+                "windows_failed": [w for w in ordered_windows if w["status"] != "SUCCESS"]
             }
             
             # Save specific run file only
@@ -320,10 +331,15 @@ def fetch_and_send(start_date, end_date, limiter, producer, session):
 # MAIN LOGIC
 # =========================================================
 from concurrent.futures import wait, FIRST_COMPLETED
+from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, MofNCompleteColumn, TimeElapsedColumn, TimeRemainingColumn
 
-def run_cycle():
+def run_cycle(target_run_id=None):
     # 1. Setup Run ID
-    run_id = f"run_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    if target_run_id:
+        run_id = target_run_id
+    else:
+        run_id = f"run_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    
     Config.RUN_ID = run_id
     update_log_file(run_id)
     
@@ -367,70 +383,90 @@ def run_cycle():
             curr = window_end + timedelta(days=1)
 
         # 3. Determine work (Tasks)
-        # Always process ALL windows in this run. No history check.
         tasks = []
         for w in windows:
             s_str = w["window_start"]
             e_str = w["window_end"]
+            
+            # Skip if already marked success in checkpoint
+            if s_str in checkpoint.windows and checkpoint.windows[s_str]["status"] == "SUCCESS":
+                continue
+                
             tasks.append((s_str, e_str))
             checkpoint.register_window(s_str, e_str, status="PENDING")
 
-        logger.info(f"📅 Total Windows to Process: {len(tasks)}")
+        if not tasks:
+            logger.info("✨ No pending windows to process for this run.")
+            return
+
+        logger.info(f"📅 Remaining Windows to Process: {len(tasks)}")
 
         # 4. Process with Dynamic Retry Loop
-        total_sent = 0
+        total_sent = sum(w["records"] for w in checkpoint.windows.values() if w["status"] == "SUCCESS")
         last_flush_count = 0 
-        max_workers = len(limiter.keys) * 2
+        max_workers = min(len(limiter.keys) * 2, 8) # Cap at 8 to avoid burst limits
         logger.info(f"🚀 Launching with {max_workers} parallel workers")
         
-        with ThreadPoolExecutor(max_workers=max_workers) as pool:
-            # Initial submission
-            future_to_date = {
-                pool.submit(fetch_and_send, s, e, limiter, producer, session): (s, e) 
-                for s, e in tasks
-            }
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(bar_width=40),
+            MofNCompleteColumn(),
+            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+            TimeElapsedColumn(),
+            TimeRemainingColumn(),
+            console=console
+        ) as progress:
             
-            while future_to_date:
-                # Wait for at least one future to complete
-                done, _ = wait(future_to_date.keys(), return_when=FIRST_COMPLETED)
+            main_task = progress.add_task("[cyan]Ingesting NASA Data...", total=len(tasks))
+            
+            with ThreadPoolExecutor(max_workers=max_workers) as pool:
+                # Initial submission
+                future_to_date = {
+                    pool.submit(fetch_and_send, s, e, limiter, producer, session): (s, e) 
+                    for s, e in tasks
+                }
                 
-                # Check status - if we just processed tasks, we are RUNNING
-                # BUT only if we are not in a global sleep state detected by limiter
-                if limiter.global_sleep_until <= time.time():
-                    PipelineStatus.update("RUNNING")
-
-                for future in done:
-                    start_key, end_key = future_to_date.pop(future)
+                while future_to_date:
+                    # Wait for at least one future to complete
+                    done, _ = wait(future_to_date.keys(), return_when=FIRST_COMPLETED)
                     
-                    try:
-                        result = future.result()
+                    # Check status
+                    if limiter.global_sleep_until <= time.time():
+                        PipelineStatus.update("RUNNING")
 
-                        if result == "RETRY":
-                            logger.info(f"♻️ Retrying window [{start_key} -> {end_key}]")
-                            # Re-submit logic
-                            new_future = pool.submit(fetch_and_send, start_key, end_key, limiter, producer, session)
-                            future_to_date[new_future] = (start_key, end_key)
+                    for future in done:
+                        start_key, end_key = future_to_date.pop(future)
+                        
+                        try:
+                            result = future.result()
 
-                        elif result is not False:
-                            # Success
-                            count = int(result)
-                            checkpoint.mark_success(start_key, end_key, count)
-                            total_sent += count
-                            logger.info(f"✅ Window [{start_key} -> {end_key}]: {count} records. (Total: {total_sent})")
-                            
-                            # Flush Strategy: Crossing boundary
-                            if (total_sent - last_flush_count) >= 5000:
-                                producer.flush(timeout=10)
-                                last_flush_count = total_sent
+                            if result == "RETRY":
+                                # Re-submit logic
+                                new_future = pool.submit(fetch_and_send, start_key, end_key, limiter, producer, session)
+                                future_to_date[new_future] = (start_key, end_key)
+
+                            elif result is not False:
+                                # Success
+                                count = int(result)
+                                checkpoint.mark_success(start_key, end_key, count)
+                                total_sent += count
+                                progress.advance(main_task)
                                 
-                        else:
-                            # Hard failure (network error etc other than 429)
-                            checkpoint.mark_failed(start_key, end_key, "Fetch or Send Failed")
-                            logger.error(f"❌ Failed window: {start_key}")
+                                # Flush Strategy
+                                if (total_sent - last_flush_count) >= 5000:
+                                    producer.flush(timeout=10)
+                                    last_flush_count = total_sent
+                                    
+                            else:
+                                # Hard failure
+                                checkpoint.mark_failed(start_key, end_key, "Fetch or Send Failed")
+                                progress.advance(main_task)
 
-                    except Exception as e:
-                        logger.error(f"❌ Worker Exception: {e}")
-                        checkpoint.mark_failed(start_key, end_key, str(e))
+                        except Exception as e:
+                            logger.error(f"❌ Worker Exception: {e}")
+                            checkpoint.mark_failed(start_key, end_key, str(e))
+                            progress.advance(main_task)
 
         sys.stdout.write("\n")
         logger.info(f"✅ Run Execution Finished. Flushing Kafka...")
@@ -533,6 +569,20 @@ def run_delta_cycle():
     return total_sent
 
 
+def get_latest_run_id():
+    """Find the most recent run_*.json in the checkpoint directory."""
+    try:
+        path = Config.PRODUCER_CHECKPOINT_DIR
+        if not os.path.exists(path):
+            return None
+        files = [f for f in os.listdir(path) if f.startswith("run_") and f.endswith(".json")]
+        if not files:
+            return None
+        # Sort by filename (which contains timestamp)
+        return sorted(files)[-1].replace(".json", "")
+    except Exception:
+        return None
+
 def main():
     """
     Continuous pipeline loop:
@@ -544,9 +594,14 @@ def main():
     FULL_SCAN_INTERVAL = 6 * 3600 # 6 hours between full scans
 
     # Phase 1: Full historical backfill
-    logger.info("🚀 Phase 1: Full historical backfill starting...")
+    latest_run = get_latest_run_id()
+    if latest_run:
+        logger.info(f"🚀 Found previous run: {latest_run}. Resuming...")
+    else:
+        logger.info("🚀 Phase 1: Full historical backfill starting...")
+    
     try:
-        run_cycle()
+        run_cycle(target_run_id=latest_run)
     except Exception as e:
         logger.critical(f"🔥 Critical Failure in initial backfill: {e}")
 

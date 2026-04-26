@@ -1,5 +1,5 @@
 requests
-pyspark
+pyspark==3.5.3
 psycopg2-binary
 python-dotenv
 fastapi

@@ -1,0 +1,39 @@
+# Version control
+.git
+.gitignore
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+.env
+
+# Node.js
+node_modules/
+frontend/node_modules/
+.next/
+frontend/.next/
+npm-debug.log
+yarn-error.log
+yarn.lock
+package-lock.json
+
+# Docker
+docker-compose.override.yml
+.dockerignore
+
+# IDEs and environments
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Data/Logs
+logs/
+*.log
+*.sqlite
+*.db
