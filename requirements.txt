@@ -8,3 +8,4 @@ pydantic
 kafka-python-ng
 lz4
 rich
+httpx

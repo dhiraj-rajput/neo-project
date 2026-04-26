@@ -58,7 +58,7 @@
             "uid": "TimescaleDB"
           },
           "format": "table",
-          "rawSql": "SELECT COUNT(DISTINCT id) as \"Total Asteroids\" FROM neo_processed WHERE close_approach_date BETWEEN $__timeFrom() AND $__timeTo()",
+          "rawSql": "SELECT COUNT(DISTINCT asteroid_id) as \"Total Asteroids\" FROM neo_close_approaches WHERE close_approach_date BETWEEN $__timeFrom() AND $__timeTo()",
           "refId": "A"
         }
       ],
@@ -122,7 +122,7 @@
             "uid": "TimescaleDB"
           },
           "format": "table",
-          "rawSql": "SELECT COUNT(*) as \"High Risk Count\" FROM neo_processed WHERE risk_score > 0.6 AND close_approach_date BETWEEN $__timeFrom() AND $__timeTo()",
+          "rawSql": "SELECT COUNT(*) as \"High Risk Count\" FROM neo_agency_sentry WHERE palermo_scale > -2",
           "refId": "A"
         }
       ],
@@ -178,7 +178,7 @@
             "uid": "TimescaleDB"
           },
           "format": "table",
-          "rawSql": "SELECT AVG(diameter_mean_km) as \"Avg Diameter\" FROM neo_processed WHERE close_approach_date BETWEEN $__timeFrom() AND $__timeTo()",
+          "rawSql": "SELECT AVG(estimated_diameter_km_max) as \"Avg Diameter\" FROM neo_close_approaches WHERE close_approach_date BETWEEN $__timeFrom() AND $__timeTo()",
           "refId": "A"
         }
       ],
@@ -242,7 +242,7 @@
             "uid": "TimescaleDB"
           },
           "format": "table",
-          "rawSql": "SELECT\nCOUNT(*) FILTER (WHERE is_potentially_hazardous = TRUE)  AS hazardous_count,\nCOUNT(*) FILTER (WHERE is_potentially_hazardous = FALSE) AS non_hazardous_count\nFROM neo_processed;",
+          "rawSql": "SELECT\nCOUNT(*) FILTER (WHERE is_potentially_hazardous = TRUE)  AS hazardous_count,\nCOUNT(*) FILTER (WHERE is_potentially_hazardous = FALSE) AS non_hazardous_count\nFROM neo_close_approaches;",
           "refId": "A"
         }
       ],
@@ -676,7 +676,7 @@
             "uid": "TimescaleDB"
           },
           "format": "table",
-          "rawSql": "SELECT \n  WIDTH_BUCKET(risk_score, 0, 1, 20) as bucket,\n  (WIDTH_BUCKET(risk_score, 0, 1, 20) - 1) * 0.05 as risk_score,\n  COUNT(*) as count\nFROM neo_processed\nWHERE close_approach_date BETWEEN $__timeFrom() AND $__timeTo()\nGROUP BY bucket\nORDER BY bucket",
+          "rawSql": "SELECT \n  WIDTH_BUCKET(palermo_scale, -10, 0, 20) as bucket,\n  (WIDTH_BUCKET(palermo_scale, -10, 0, 20) - 1) * 0.5 - 10 as palermo_scale,\n  COUNT(*) as count\nFROM neo_agency_sentry\nGROUP BY bucket\nORDER BY bucket",
           "refId": "A"
         }
       ],
@@ -736,7 +736,7 @@
             "uid": "TimescaleDB"
           },
           "format": "table",
-          "rawSql": "SELECT \n CASE \n WHEN is_potentially_hazardous = TRUE THEN 'Hazardous' \n ELSE 'Non-Hazardous' \n END AS category, \n COUNT(*) AS count \n FROM neo_processed \n WHERE close_approach_date BETWEEN $__timeFrom() AND $__timeTo()\nGROUP BY category\nORDER BY category;",
+          "rawSql": "SELECT \n CASE \n WHEN is_potentially_hazardous = TRUE THEN 'Hazardous' \n ELSE 'Non-Hazardous' \n END AS category, \n COUNT(*) AS count \n FROM neo_close_approaches \n WHERE close_approach_date BETWEEN $__timeFrom() AND $__timeTo()\nGROUP BY category\nORDER BY category;",
           "refId": "A"
         }
       ],
@@ -796,7 +796,7 @@
             "uid": "TimescaleDB"
           },
           "format": "table",
-          "rawSql": "SELECT\n  risk_level as category,\n  COUNT(*) as count\nFROM neo_processed\nWHERE close_approach_date BETWEEN $__timeFrom() AND $__timeTo()\nGROUP BY risk_level\nORDER BY \n  CASE risk_level\n    WHEN 'Very High' THEN 1\n    WHEN 'High' THEN 2\n    WHEN 'Medium' THEN 3\n    WHEN 'Low' THEN 4\n    WHEN 'Very Low' THEN 5\n  END",
+          "rawSql": "SELECT\n  orbit_class as category,\n  COUNT(*) as count\nFROM neo_agency_sbdb\nGROUP BY orbit_class\nORDER BY count DESC",
           "refId": "A"
         }
       ],

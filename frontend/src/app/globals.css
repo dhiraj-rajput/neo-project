@@ -1,14 +1,407 @@
 @import "tailwindcss";
 :root {
   --background: #020208;
-  --foreground: #ededed;
+  --foreground: #edf2ff;
+  --panel: rgba(12, 22, 40, 0.6);
+  --panel-border: rgba(28, 156, 255, 0.14);
+  --accent: #00aaff;
+  --accent-soft: rgba(0, 170, 255, 0.22);
+}
+
+html,
+body,
+#__next {
+  min-height: 100%;
+}
+
+* {
+  box-sizing: border-box;
 }
 
 body {
   color: var(--foreground);
-  background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
+  background: radial-gradient(circle at 20% 10%, rgba(0, 170, 255, 0.17), transparent 16%),
+    radial-gradient(circle at 80% 16%, rgba(0, 170, 255, 0.09), transparent 20%),
+    linear-gradient(180deg, #08111f 0%, #03050d 46%, #010104 100%);
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   margin: 0;
   padding: 0;
-  overflow: hidden; /* Hide scrollbars for full screen 3D */
+  min-height: 100vh;
+  overflow: hidden;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(circle at 50% 8%, rgba(255, 255, 255, 0.08), transparent 18%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.03), transparent 35%);
+  opacity: 0.8;
+  mix-blend-mode: screen;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+::selection {
+  background: rgba(0, 170, 255, 0.35);
+  color: #e0f2ff;
+}
+
+img {
+  display: block;
+  max-width: 100%;
+}
+
+/* ── Search Component ─────────────────────────────────── */
+.neo-search-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 20px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(20px);
+  color: rgba(255, 255, 255, 0.5);
+  cursor: pointer;
+  font-size: 13px;
+  transition: all 0.2s;
+}
+.neo-search-trigger:hover {
+  border-color: rgba(0, 170, 255, 0.3);
+  color: rgba(255, 255, 255, 0.8);
+}
+.neo-search-trigger kbd {
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  font-size: 11px;
+  font-family: monospace;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.neo-search-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  display: flex;
+  justify-content: center;
+  padding-top: 12vh;
+}
+
+.neo-search-modal {
+  width: 100%;
+  max-width: 560px;
+  background: rgba(8, 14, 28, 0.95);
+  border: 1px solid rgba(0, 170, 255, 0.2);
+  border-radius: 20px;
+  overflow: hidden;
+  box-shadow: 0 40px 100px rgba(0, 0, 0, 0.5), 0 0 80px rgba(0, 170, 255, 0.08);
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.neo-search-input-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+.neo-search-input-row input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: white;
+  font-size: 15px;
+}
+.neo-search-input-row input::placeholder { color: rgba(255, 255, 255, 0.3); }
+.neo-search-icon { color: rgba(0, 170, 255, 0.6); flex-shrink: 0; }
+.neo-search-close {
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.3);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 8px;
+  transition: all 0.15s;
+}
+.neo-search-close:hover { background: rgba(255, 255, 255, 0.1); color: white; }
+
+.neo-search-loading {
+  padding: 20px;
+  text-align: center;
+  color: rgba(0, 170, 255, 0.6);
+  font-size: 13px;
+}
+
+.neo-search-results {
+  list-style: none;
+  margin: 0;
+  padding: 8px;
+  overflow-y: auto;
+}
+
+.neo-search-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.neo-search-item:hover, .neo-search-item.active {
+  background: rgba(0, 170, 255, 0.08);
+}
+.neo-search-item-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.neo-search-item-left .hazard-icon { color: #ff4444; flex-shrink: 0; }
+.neo-search-name { font-size: 14px; color: white; display: block; }
+.neo-search-id { font-size: 11px; color: rgba(255, 255, 255, 0.35); font-family: monospace; }
+.neo-search-item-right { display: flex; align-items: center; gap: 8px; }
+.neo-search-source {
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.neo-search-source.local { background: rgba(0, 170, 255, 0.12); color: #66ccff; }
+.neo-search-source.jpl { background: rgba(255, 170, 0, 0.12); color: #ffcc66; }
+.neo-search-empty {
+  padding: 30px;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.3);
+  font-size: 13px;
+}
+
+/* ── Profile Panel ────────────────────────────────────── */
+.neo-profile-panel {
+  width: 400px;
+  max-width: 90vw;
+  height: 100vh;
+  overflow-y: auto;
+  background: rgba(6, 10, 22, 0.95);
+  backdrop-filter: blur(24px);
+  border-left: 1px solid rgba(0, 170, 255, 0.15);
+  padding: 24px;
+  box-shadow: -20px 0 60px rgba(0, 0, 0, 0.4);
+}
+
+.neo-profile-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 24px;
+}
+.neo-profile-header h2 {
+  font-size: 20px;
+  font-weight: 600;
+  color: white;
+  margin: 0;
+}
+.neo-pha-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: 8px;
+  background: rgba(255, 50, 50, 0.15);
+  border: 1px solid rgba(255, 50, 50, 0.3);
+  color: #ff6666;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin-top: 6px;
+}
+.neo-profile-close {
+  background: none;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  color: rgba(255, 255, 255, 0.5);
+  cursor: pointer;
+  padding: 8px;
+  transition: all 0.15s;
+}
+.neo-profile-close:hover { background: rgba(255, 255, 255, 0.1); color: white; }
+
+.neo-profile-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 60px 20px;
+  color: rgba(0, 170, 255, 0.6);
+  font-size: 13px;
+}
+.neo-spinner {
+  width: 32px;
+  height: 32px;
+  border: 2px solid rgba(0, 170, 255, 0.2);
+  border-top-color: #00aaff;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.neo-profile-sections { display: flex; flex-direction: column; gap: 20px; }
+
+.neo-agency-section {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 16px;
+  padding: 16px;
+}
+.neo-agency-section h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(0, 170, 255, 0.8);
+  margin: 0 0 12px 0;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.neo-data-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.neo-data-item {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+.neo-data-label {
+  display: block;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: rgba(255, 255, 255, 0.35);
+  margin-bottom: 4px;
+}
+.neo-data-value {
+  font-size: 13px;
+  font-family: 'JetBrains Mono', monospace;
+  color: white;
+}
+.neo-data-value.neo-danger { color: #ff6644; }
+.neo-safe-text { color: #44cc88; font-size: 13px; margin: 0; }
+.neo-danger-text { color: #ff6644; font-size: 13px; margin: 0; }
+.neo-mpc-status { color: rgba(255, 255, 255, 0.6); font-size: 13px; margin: 0; }
+
+.neo-cad-list { display: flex; flex-direction: column; gap: 4px; max-height: 200px; overflow-y: auto; }
+.neo-cad-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 0.7fr;
+  gap: 8px;
+  padding: 8px 10px;
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 8px;
+  font-size: 12px;
+  font-family: monospace;
+}
+.neo-cad-date { color: rgba(255, 255, 255, 0.7); }
+.neo-cad-dist { color: #66aaff; }
+.neo-cad-vel { color: rgba(255, 255, 255, 0.4); text-align: right; }
+
+/* ── Sentry Watchlist ─────────────────────────────────── */
+.neo-sentry-widget {
+  backdrop-filter: blur(20px);
+  background: rgba(8, 12, 24, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 20px;
+  overflow: hidden;
+}
+.neo-sentry-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 18px;
+  width: 100%;
+  border: none;
+  background: none;
+  color: rgba(255, 255, 255, 0.6);
+  cursor: pointer;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  transition: color 0.15s;
+}
+.neo-sentry-toggle:hover { color: white; }
+.neo-sentry-list {
+  max-height: 300px;
+  overflow-y: auto;
+  padding: 0 8px 8px;
+}
+.neo-sentry-loading {
+  padding: 20px;
+  text-align: center;
+  color: rgba(0, 170, 255, 0.5);
+  font-size: 12px;
+}
+.neo-sentry-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.neo-sentry-item:hover { background: rgba(255, 255, 255, 0.05); }
+.neo-torino-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.neo-sentry-info { flex: 1; min-width: 0; }
+.neo-sentry-name {
+  display: block;
+  font-size: 12px;
+  color: white;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.neo-sentry-ip {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.3);
+  font-family: monospace;
+}
+.neo-sentry-ts {
+  font-size: 11px;
+  font-weight: 600;
+  font-family: monospace;
+}
+
+/* ── Keyboard hint ────────────────────────────────────── */
+.neo-kbd {
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  font-size: 11px;
+  font-family: monospace;
+  color: rgba(0, 170, 255, 0.7);
 }

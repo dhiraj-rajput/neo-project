@@ -49,7 +49,14 @@ def setup_logger(name: str, log_filename: str) -> logging.Logger:
 
         # 2. File Handler (plain text, rotating daily)
         try:
-            os.makedirs(Config.LOG_DIR, exist_ok=True)
+            if os.path.exists(Config.LOG_DIR):
+                if not os.path.isdir(Config.LOG_DIR):
+                    sys.stderr.write(f"⚠️ Removing file at {Config.LOG_DIR} to create directory...\n")
+                    os.remove(Config.LOG_DIR)
+                    os.makedirs(Config.LOG_DIR, exist_ok=True)
+            else:
+                os.makedirs(Config.LOG_DIR, exist_ok=True)
+                
             log_path = os.path.join(Config.LOG_DIR, log_filename)
 
             file_formatter = logging.Formatter(
@@ -93,6 +100,9 @@ def update_log_file(run_id: str):
 
     # Add new handler for this run
     try:
+        # Ensure base log dir exists first
+        os.makedirs(Config.LOG_DIR, exist_ok=True)
+        
         run_log_dir = os.path.join(Config.LOG_DIR, run_id)
         os.makedirs(run_log_dir, exist_ok=True)
         log_path = os.path.join(run_log_dir, "producer.log")

@@ -13,6 +13,59 @@ from rich.panel import Panel
 from src.config import Config
 from src.logger import logger, update_log_file, force_flush, console
 
+NEOWS_NOT_FOUND_HOLD_DAYS = int(os.getenv("NEOWS_NOT_FOUND_HOLD_DAYS", "30"))
+
+
+def _not_found_windows_path():
+    return os.path.join(Config.PRODUCER_CHECKPOINT_DIR, "neows_not_found_windows.json")
+
+
+def load_not_found_windows():
+    path = _not_found_windows_path()
+    if not os.path.exists(path):
+        return {}
+    try:
+        with open(path, "r") as f:
+            return json.load(f)
+    except Exception as e:
+        logger.warning(f"Could not load NeoWs 404 hold file: {e}")
+        return {}
+
+
+def save_not_found_windows(windows):
+    try:
+        os.makedirs(Config.PRODUCER_CHECKPOINT_DIR, exist_ok=True)
+        with open(_not_found_windows_path(), "w") as f:
+            json.dump(windows, f, indent=2)
+    except Exception as e:
+        logger.warning(f"Could not save NeoWs 404 hold file: {e}")
+
+
+def is_window_on_not_found_hold(start, end, windows=None):
+    windows = windows if windows is not None else load_not_found_windows()
+    hold = windows.get(f"{start}:{end}")
+    if not hold:
+        return False
+    try:
+        return datetime.fromisoformat(hold["not_found_until"]) > datetime.now()
+    except Exception:
+        return False
+
+
+def mark_window_not_found(start, end):
+    windows = load_not_found_windows()
+    hold_until = datetime.now() + timedelta(days=NEOWS_NOT_FOUND_HOLD_DAYS)
+    windows[f"{start}:{end}"] = {
+        "window_start": start,
+        "window_end": end,
+        "last_status_code": 404,
+        "last_checked_at": datetime.now().isoformat(),
+        "not_found_until": hold_until.isoformat(),
+    }
+    save_not_found_windows(windows)
+    return hold_until
+
+
 # =========================================================
 # CHECKPOINT MANAGER
 # =========================================================
@@ -147,8 +200,8 @@ class PipelineStatus:
                 "wake_at": wake_at, # Timestamp
                 "reason": reason
             }
-            # Atomic write (write to temp then rename) NOT strictly needed for this scale,
-            # but direct write is fine.
+            # Ensure directory exists
+            os.makedirs(os.path.dirname(Config.PIPELINE_STATUS_FILE), exist_ok=True)
             with open(Config.PIPELINE_STATUS_FILE, 'w') as f:
                 json.dump(payload, f)
                 f.flush()
@@ -318,6 +371,10 @@ def fetch_and_send(start_date, end_date, limiter, producer, session):
             # Report the key and ask to RETRY
             limiter.report_429(api_key)
             return "RETRY"
+
+        elif resp.status_code == 404:
+            logger.warning(f"NeoWs returned 404 for {start_date} -> {end_date}; marking window as not found.")
+            return "NOT_FOUND"
         
         else:
             logger.error(f"❌ API Error {resp.status_code}: {resp.text[:200]}")
@@ -384,12 +441,17 @@ def run_cycle(target_run_id=None):
 
         # 3. Determine work (Tasks)
         tasks = []
+        not_found_windows = load_not_found_windows()
         for w in windows:
             s_str = w["window_start"]
             e_str = w["window_end"]
             
             # Skip if already marked success in checkpoint
             if s_str in checkpoint.windows and checkpoint.windows[s_str]["status"] == "SUCCESS":
+                continue
+
+            if is_window_on_not_found_hold(s_str, e_str, not_found_windows):
+                checkpoint.mark_skipped(s_str, e_str, "NeoWs returned 404 recently; retry hold is active")
                 continue
                 
             tasks.append((s_str, e_str))
@@ -404,7 +466,7 @@ def run_cycle(target_run_id=None):
         # 4. Process with Dynamic Retry Loop
         total_sent = sum(w["records"] for w in checkpoint.windows.values() if w["status"] == "SUCCESS")
         last_flush_count = 0 
-        max_workers = min(len(limiter.keys) * 2, 8) # Cap at 8 to avoid burst limits
+        max_workers = len(limiter.keys) * 2
         logger.info(f"🚀 Launching with {max_workers} parallel workers")
         
         with Progress(
@@ -445,6 +507,15 @@ def run_cycle(target_run_id=None):
                                 # Re-submit logic
                                 new_future = pool.submit(fetch_and_send, start_key, end_key, limiter, producer, session)
                                 future_to_date[new_future] = (start_key, end_key)
+
+                            elif result == "NOT_FOUND":
+                                hold_until = mark_window_not_found(start_key, end_key)
+                                checkpoint.mark_skipped(
+                                    start_key,
+                                    end_key,
+                                    f"NeoWs 404; retry held until {hold_until.date()}"
+                                )
+                                progress.advance(main_task)
 
                             elif result is not False:
                                 # Success
@@ -546,6 +617,12 @@ def run_delta_cycle():
                 time.sleep(5)
                 result = fetch_and_send(s_str, e_str, limiter, producer, session)
 
+            if result == "NOT_FOUND":
+                hold_until = mark_window_not_found(s_str, e_str)
+                logger.warning(f"⏭ Delta window [{s_str} -> {e_str}] held after 404 until {hold_until.date()}")
+                curr = window_end + timedelta(days=1)
+                continue
+
             if result is not False and result != "RETRY":
                 count = int(result)
                 total_sent += count
@@ -587,11 +664,10 @@ def main():
     """
     Continuous pipeline loop:
     1. Initial full historical backfill (run_cycle)
-    2. Then switch to fast delta polling every 30 minutes
-    3. Full re-scan every 6 hours to catch any missed data
+    2. Sleep for 24 hours.
+    3. Full re-scan every 24 hours.
     """
-    DELTA_INTERVAL = 30 * 60      # 30 minutes between delta polls
-    FULL_SCAN_INTERVAL = 6 * 3600 # 6 hours between full scans
+    FULL_SCAN_INTERVAL = 24 * 3600 # 24 hours between full scans
 
     # Phase 1: Full historical backfill
     latest_run = get_latest_run_id()
@@ -608,7 +684,7 @@ def main():
     last_full_scan = time.time()
 
     # Phase 2: Continuous monitoring loop
-    logger.info("🔁 Phase 2: Entering continuous monitoring mode")
+    logger.info("🔁 Phase 2: Entering continuous monitoring mode (24h cycle)")
     while True:
         try:
             elapsed_since_full = time.time() - last_full_scan
@@ -618,16 +694,15 @@ def main():
                 logger.info("🔄 Periodic full re-scan triggered")
                 run_cycle()
                 last_full_scan = time.time()
-            else:
-                # Quick delta scan
-                run_delta_cycle()
 
         except Exception as e:
             logger.critical(f"🔥 Critical Failure in pipeline loop: {e}")
 
-        next_scan_type = "FULL" if (time.time() - last_full_scan) >= FULL_SCAN_INTERVAL else "DELTA"
-        wait_time = DELTA_INTERVAL
-        logger.info(f"💤 Next {next_scan_type} scan in {wait_time // 60} minutes...")
+        wait_time = FULL_SCAN_INTERVAL - (time.time() - last_full_scan)
+        if wait_time <= 0:
+            wait_time = 60 # failsafe
+        
+        logger.info(f"💤 Next FULL scan in {int(wait_time // 3600)} hours...")
         PipelineStatus.update("SLEEPING", wake_at=time.time() + wait_time, reason="SCHEDULED")
         force_flush()
         time.sleep(wait_time)
