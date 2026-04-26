@@ -1,99 +1,99 @@
-# NASA Near-Earth Object (NEO) Analysis Pipeline
+# NEO Orbital Tracker — Multi-Agency Comparative Analysis Engine
 
-A real-time data pipeline that fetches, processes, and visualizes NASA Near-Earth Object (NEO) data using Kafka, Spark Structured Streaming, TimescaleDB, and Streamlit.
+A real-time data pipeline and 3D visualization engine for Near-Earth Object (NEO) tracking. Ingests data from NASA's NeoWs API, processes it via Apache Spark Structured Streaming, stores it in TimescaleDB, and displays it in an interactive 3D orbital visualization built with React Three Fiber.
 
-## 🚀 Features
+## Architecture
 
-*   **Data Ingestion**: Fetches NEO data from NASA's API and streams it to Kafka.
-*   **Real-time Processing**: Spark Structured Streaming processes raw data, calculates risk scores, and detects anomalies.
-*   **Storage**: TimescaleDB (PostgreSQL) stores both raw and processed data for efficient time-series querying.
-*   **Visualization**:
-    *   **Streamlit Dashboard**: Interactive UI to explore asteroids, risk levels, and daily metrics.
-    *   **Grafana**: For monitoring system metrics (optional).
+```
+NASA NeoWs API → Kafka → Spark Streaming → TimescaleDB → FastAPI → Next.js 3D Frontend
+```
 
-## 🛠️ Architecture
+| Component | Technology |
+|-----------|-----------|
+| Ingestion | Python Producer → Kafka |
+| Processing | PySpark Structured Streaming |
+| Storage | TimescaleDB (PostgreSQL) |
+| API | FastAPI (Python) |
+| Frontend | Next.js + React Three Fiber |
+| Monitoring | Grafana |
+| Container Runtime | Docker Compose |
 
-1.  **Fetch Service** (`fetch_raw.py`): Queries NASA API -> Produces to Kafka Topic `neo-raw-data`.
-2.  **Spark Processor** (`spark_processor.py`): Consumes from Kafka -> Calculates Risk Score -> Writes to `neo_processed` table in DB.
-3.  **Metrics Aggregator** (`calculate_metrics_data.py`): Aggregates processed data into daily metrics -> Writes to `neo_daily_metrics` table.
-4.  **UI** (`streamlit_ui.py`): Reads from DB -> Displays Dashboard.
+## Prerequisites
 
-## 📋 Prerequisites
+- Docker and Docker Compose
+- NASA API Key ([Get one here](https://api.nasa.gov/))
+- Bun (for local frontend development)
 
-*   Docker and Docker Compose
-*   NASA API Key (Get one [here](https://api.nasa.gov/))
+## Getting Started
 
-## 🏁 Getting Started
-
-### 1. Clone the Repository
+### 1. Clone and Configure
 
 ```bash
 git clone <repository-url>
 cd neo-project
-```
-
-### 2. Configure Environment
-
-Copy the example environment file and add your NASA API key:
-
-```bash
 cp .env.example .env
+# Edit .env and set NASA_API_KEYS=your_key
 ```
 
-Edit `.env` and set `NASA_API_KEY=your_actual_key`.
-
-### 3. Start Services
-
-Start the infrastructure (Kafka, TimescaleDB, Grafana) and application containers:
+### 2. Start All Services
 
 ```bash
-docker-compose up -d
+docker-compose up -d --build
 ```
 
-### 4. Run the Pipeline
+### 3. Run the Pipeline
 
-The application containers (`neo-app` and `neo-ui`) start in a waiting state. You need to execute the scripts manually to start processing.
-
-**Step 1: Start Data Fetching**
 ```bash
-docker-compose exec neo-app python fetch_raw.py
-```
-*This will fetch data for the configured date range and send it to Kafka.*
+# Start data ingestion (runs continuously with 30-min delta polling)
+docker-compose exec neo-app python -m src.producer.neo_producer
 
-**Step 2: Start Spark Processor**
-Open a new terminal and run:
-```bash
-docker-compose exec neo-app python spark_processor.py
-```
-*This starts the streaming job. Keep this terminal open.*
-
-**Step 3: Start Metrics Aggregator**
-Open a new terminal and run:
-```bash
-docker-compose exec neo-app python calculate_metrics_data.py
-```
-*This continuously calculates daily statistics.*
-
-**Step 4: Launch Streamlit Dashboard**
-Open a new terminal and run:
-```bash
-docker-compose exec neo-ui streamlit run streamlit_ui.py
+# Start Spark stream processor (in a new terminal)
+docker-compose exec neo-app python -m src.consumer.spark_processor
 ```
 
-## 📊 Accessing the Dashboards
+### 4. Access the Application
 
-*   **Streamlit UI**: [http://localhost:8501](http://localhost:8501)
-*   **Grafana**: [http://localhost:3000](http://localhost:3000) (Default login: `admin` / `admin`)
+| Service | URL |
+|---------|-----|
+| 3D Frontend | [http://localhost:3000](http://localhost:3000) |
+| FastAPI Docs | [http://localhost:8000/docs](http://localhost:8000/docs) |
+| Grafana | [http://localhost:3000](http://localhost:3000) |
 
-## 📁 Project Structure
+## Project Structure
 
-*   `fetch_raw.py`: Data ingestion script.
-*   `spark_processor.py`: Spark Structured Streaming logic.
-*   `calculate_metrics_data.py`: Daily metrics aggregation.
-*   `streamlit_ui.py`: Dashboard application.
-*   `db-init.sql`: Database initialization script.
-*   `docker-compose.yml`: Container orchestration.
+```
+neo-project/
+├── src/
+│   ├── api/           # FastAPI backend
+│   │   └── main.py
+│   ├── producer/      # Kafka data ingestion
+│   │   └── neo_producer.py
+│   ├── consumer/      # Spark stream processing
+│   │   └── spark_processor.py
+│   ├── db/            # Database schema & migrations
+│   │   ├── schema.sql
+│   │   └── history_init.sql
+│   ├── config.py      # Centralized configuration
+│   └── logger.py      # Logging setup
+├── frontend/          # Next.js 3D visualization
+│   └── src/
+│       ├── app/       # Pages & styles
+│       └── components/ # React Three Fiber components
+├── grafana/           # Grafana provisioning
+├── Dockerfile         # Python backend image (uv + PySpark)
+├── docker-compose.yml # Full orchestration
+└── requirements.txt   # Python dependencies
+```
 
-## 📝 License
+## Pipeline Behavior
+
+The producer runs **continuously** with two modes:
+
+1. **Full Backfill**: On first startup, fetches all historical NEO data from `START_DATE` to today.
+2. **Delta Polling**: After backfill, polls NASA every **30 minutes** for updated data (today ± 14 days). A full re-scan triggers every **6 hours**.
+
+The Spark consumer uses **UPSERT** logic — if NASA revises an asteroid's trajectory, the old data is archived to the history table and the main table is updated with the latest values.
+
+## License
 
 [MIT](LICENSE)
