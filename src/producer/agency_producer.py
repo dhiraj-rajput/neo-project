@@ -23,6 +23,9 @@ NOT_FOUND_HOLD_DAYS = int(os.getenv("AGENCY_NOT_FOUND_HOLD_DAYS", "30"))
 AGENCY_BATCH_LIMIT = int(os.getenv("AGENCY_BATCH_LIMIT", "2000"))
 AGENCY_CONCURRENCY = int(os.getenv("AGENCY_CONCURRENCY", "25"))
 AGENCY_SENTRY_SEED_LIMIT = int(os.getenv("AGENCY_SENTRY_SEED_LIMIT", "500"))
+AGENCY_SSD_CONCURRENCY = int(os.getenv("AGENCY_SSD_CONCURRENCY", "1"))
+AGENCY_SSD_REQUEST_DELAY = float(os.getenv("AGENCY_SSD_REQUEST_DELAY", "0.25"))
+JPL_SSD_HOST = "ssd-api.jpl.nasa.gov"
 
 def get_db_connection():
     return psycopg2.connect(
@@ -40,10 +43,18 @@ async def fetch_esa_risk_list(client):
     return ""
 
 
-async def fetch_sentry_seed_objects(client):
+async def fetch_sentry_seed_objects(client, request_limiter=None):
     if AGENCY_SENTRY_SEED_LIMIT <= 0:
         return []
-    data, _status = await fetch_json_endpoint(client, "jpl_sentry_seed", JPL_SENTRY_URL, {"all": "true"}, "sentry_seed", max_retries=2)
+    data, _status = await fetch_json_endpoint(
+        client,
+        "jpl_sentry_seed",
+        JPL_SENTRY_URL,
+        {"all": "true"},
+        "sentry_seed",
+        max_retries=2,
+        request_limiter=request_limiter,
+    )
     if not data or "data" not in data:
         return []
 
@@ -90,9 +101,9 @@ def normalize_designation(value):
 def build_identifier_candidates(record):
     candidates = []
     for value in (
-        record.get("asteroid_id"),
-        record.get("neo_reference_id"),
         normalize_designation(record.get("name")),
+        record.get("neo_reference_id"),
+        record.get("asteroid_id"),
         record.get("name"),
     ):
         if value and value not in candidates:
@@ -100,20 +111,56 @@ def build_identifier_candidates(record):
     return candidates
 
 
-async def fetch_json_endpoint(client, source, url, params, asteroid_id, max_retries=3):
+def build_source_status(source, status_code, failure_type=None, not_found_until=None, lookup_value=None):
+    status = {
+        "source": source,
+        "status_code": status_code,
+        "last_failure_type": failure_type,
+        "not_found_until": not_found_until,
+    }
+    if lookup_value:
+        status["lookup_value"] = lookup_value
+    return status
+
+
+def is_request_format_status(source, status_code):
+    if status_code == 415:
+        return True
+    return source.startswith("jpl_") and status_code in {400, 405}
+
+
+async def send_checked_request(client, method, url, *, source, request_limiter=None, **kwargs):
+    if request_limiter and JPL_SSD_HOST in url:
+        async with request_limiter:
+            resp = await client.request(method, url, **kwargs)
+            await asyncio.sleep(AGENCY_SSD_REQUEST_DELAY)
+            return resp
+    return await client.request(method, url, **kwargs)
+
+
+async def fetch_json_endpoint(client, source, url, params, asteroid_id, max_retries=3, request_limiter=None):
     """Fetch one agency endpoint, retrying transient failures but never retrying 404s."""
     for attempt in range(max_retries):
         try:
-            resp = await client.get(url, params=params)
+            resp = await send_checked_request(
+                client,
+                "GET",
+                url,
+                source=source,
+                request_limiter=request_limiter,
+                params=params,
+            )
             status = resp.status_code
 
             if status == 200:
-                return _safe_json(resp), {
-                    "source": source,
-                    "status_code": status,
-                    "last_failure_type": None,
-                    "not_found_until": None,
-                }
+                data = _safe_json(resp)
+                if data is None:
+                    logger.warning(f"Agency source {source} returned HTTP 200 but invalid JSON for {asteroid_id}.")
+                    return None, build_source_status(source, status, "invalid_json")
+                if isinstance(data, dict) and data.get("code") in {"400", "405"}:
+                    logger.warning(f"Agency source {source} rejected request parameters for {asteroid_id}: {data.get('message')}")
+                    return None, build_source_status(source, status, "request_format_error")
+                return data, build_source_status(source, status)
 
             if status == 404:
                 hold_until = datetime.utcnow() + timedelta(days=NOT_FOUND_HOLD_DAYS)
@@ -121,48 +168,30 @@ async def fetch_json_endpoint(client, source, url, params, asteroid_id, max_retr
                     f"Agency source {source} has no record for {asteroid_id}; "
                     f"holding retries until {hold_until.date()}"
                 )
-                return None, {
-                    "source": source,
-                    "status_code": status,
-                    "last_failure_type": "not_found",
-                    "not_found_until": hold_until,
-                }
+                return None, build_source_status(source, status, "not_found", hold_until)
+
+            if is_request_format_status(source, status):
+                logger.warning(
+                    f"Agency source {source} rejected the request shape with HTTP {status} "
+                    f"for {asteroid_id}; this is not an asteroid validity problem."
+                )
+                return None, build_source_status(source, status, "request_format_error")
 
             if 400 <= status < 500:
                 logger.warning(f"Agency source {source} returned HTTP {status} for {asteroid_id}; not retrying client error.")
-                return None, {
-                    "source": source,
-                    "status_code": status,
-                    "last_failure_type": "client_error",
-                    "not_found_until": None,
-                }
+                return None, build_source_status(source, status, "client_error")
 
             if attempt == max_retries - 1:
                 logger.error(f"Agency source {source} returned HTTP {status} for {asteroid_id} after retries.")
-                return None, {
-                    "source": source,
-                    "status_code": status,
-                    "last_failure_type": "server_error",
-                    "not_found_until": None,
-                }
+                return None, build_source_status(source, status, "server_error")
 
         except (httpx.ConnectTimeout, httpx.ReadTimeout, httpx.RemoteProtocolError) as e:
             if attempt == max_retries - 1:
                 logger.error(f"Final failure fetching {source} for {asteroid_id}: {e}")
-                return None, {
-                    "source": source,
-                    "status_code": None,
-                    "last_failure_type": type(e).__name__,
-                    "not_found_until": None,
-                }
+                return None, build_source_status(source, None, type(e).__name__)
         except Exception as e:
             logger.error(f"Unexpected error fetching {source} for {asteroid_id}: {e}")
-            return None, {
-                "source": source,
-                "status_code": None,
-                "last_failure_type": type(e).__name__,
-                "not_found_until": None,
-            }
+            return None, build_source_status(source, None, type(e).__name__)
 
         wait = (attempt + 1) * 2
         logger.warning(f"Retry {attempt + 1}/{max_retries} for {source}:{asteroid_id}. Waiting {wait}s...")
@@ -176,14 +205,14 @@ async def fetch_json_endpoint(client, source, url, params, asteroid_id, max_retr
     }
 
 
-async def fetch_first_available(client, source, url, param_name, candidates, base_params=None):
+async def fetch_first_available(client, source, url, param_name, candidates, base_params=None, request_limiter=None):
     statuses = []
     saw_not_found = False
 
     for candidate in candidates:
         params = dict(base_params or {})
         params[param_name] = candidate
-        data, status = await fetch_json_endpoint(client, source, url, params, candidate)
+        data, status = await fetch_json_endpoint(client, source, url, params, candidate, request_limiter=request_limiter)
         statuses.append(status)
         if data:
             status["lookup_value"] = candidate
@@ -192,6 +221,69 @@ async def fetch_first_available(client, source, url, param_name, candidates, bas
             saw_not_found = True
 
     if statuses and saw_not_found and all(s["status_code"] == 404 for s in statuses):
+        return None, [statuses[-1]], candidates[-1] if candidates else None
+    return None, statuses, None
+
+
+async def fetch_mpc_orbit(client, candidates, request_limiter=None):
+    """
+    MPC get-orb rejects query-string lookups with HTTP 415.
+    It expects a JSON request body, so keep this path separate from the
+    query-param based JPL endpoints.
+    """
+    statuses = []
+
+    for candidate in candidates:
+        for body in ({"desig": candidate}, {"desigs": [candidate]}):
+            try:
+                resp = await send_checked_request(
+                    client,
+                    "GET",
+                    MPC_ORB_URL,
+                    source="iau_mpc",
+                    request_limiter=request_limiter,
+                    json=body,
+                    headers={"Content-Type": "application/json"},
+                )
+                status_code = resp.status_code
+
+                if status_code == 200:
+                    data = _safe_json(resp)
+                    if data:
+                        status = build_source_status("iau_mpc", status_code, lookup_value=candidate)
+                        statuses.append(status)
+                        return data, statuses, candidate
+
+                if status_code == 404:
+                    hold_until = datetime.utcnow() + timedelta(days=NOT_FOUND_HOLD_DAYS)
+                    status = build_source_status("iau_mpc", status_code, "not_found", hold_until)
+                    statuses.append(status)
+                    break
+
+                if status_code == 415:
+                    logger.warning(
+                        "MPC rejected the request format with HTTP 415; "
+                        "check JSON body/content-type handling."
+                    )
+                    statuses.append(build_source_status("iau_mpc", status_code, "request_format_error"))
+                    continue
+
+                if 400 <= status_code < 500:
+                    logger.warning(f"Agency source iau_mpc returned HTTP {status_code} for {candidate}; not retrying client error.")
+                    statuses.append(build_source_status("iau_mpc", status_code, "client_error"))
+                    break
+
+                logger.warning(f"Agency source iau_mpc returned HTTP {status_code} for {candidate}; trying next request shape.")
+                statuses.append(build_source_status("iau_mpc", status_code, "server_error"))
+
+            except (httpx.ConnectTimeout, httpx.ReadTimeout, httpx.RemoteProtocolError) as e:
+                statuses.append(build_source_status("iau_mpc", None, type(e).__name__))
+            except Exception as e:
+                logger.error(f"Unexpected error fetching iau_mpc for {candidate}: {e}")
+                statuses.append(build_source_status("iau_mpc", None, type(e).__name__))
+                break
+
+    if statuses and all(s["status_code"] == 404 for s in statuses):
         return None, [statuses[-1]], candidates[-1] if candidates else None
     return None, statuses, None
 
@@ -245,7 +337,7 @@ def get_held_sources(asteroid_id):
         return set()
 
 
-async def fetch_profile(client, asteroid_record, esa_risk_text, held_sources=None):
+async def fetch_profile(client, asteroid_record, esa_risk_text, held_sources=None, request_limiter=None):
     asteroid_id = asteroid_record["asteroid_id"]
     candidates = build_identifier_candidates(asteroid_record)
     profile = {
@@ -268,6 +360,7 @@ async def fetch_profile(client, asteroid_record, esa_risk_text, held_sources=Non
             "sstr",
             candidates,
             {"phys-par": "true", "discovery": "true", "ca-data": "false"},
+            request_limiter=request_limiter,
         )
         profile["agencies"]["sbdb"] = sbdb
         profile["identifiers"]["sbdb_lookup"] = matched
@@ -276,7 +369,14 @@ async def fetch_profile(client, asteroid_record, esa_risk_text, held_sources=Non
         profile["agencies"]["sbdb"] = None
 
     if "jpl_sentry" not in held_sources:
-        sentry, statuses, matched = await fetch_first_available(client, "jpl_sentry", JPL_SENTRY_URL, "des", candidates)
+        sentry, statuses, matched = await fetch_first_available(
+            client,
+            "jpl_sentry",
+            JPL_SENTRY_URL,
+            "des",
+            candidates,
+            request_limiter=request_limiter,
+        )
         profile["agencies"]["sentry"] = sentry
         profile["identifiers"]["sentry_lookup"] = matched
         profile["_fetch_status"].extend(statuses)
@@ -290,7 +390,8 @@ async def fetch_profile(client, asteroid_record, esa_risk_text, held_sources=Non
             JPL_CAD_URL,
             "des",
             candidates,
-            {"date-min": "1900-01-01", "date-max": "2100-01-01"},
+            {"date-min": "1900-01-01", "date-max": "2100-01-01", "dist-max": "10"},
+            request_limiter=request_limiter,
         )
         profile["agencies"]["cad"] = cad
         profile["identifiers"]["cad_lookup"] = matched
@@ -299,7 +400,7 @@ async def fetch_profile(client, asteroid_record, esa_risk_text, held_sources=Non
         profile["agencies"]["cad"] = None
 
     if "iau_mpc" not in held_sources:
-        mpc, statuses, matched = await fetch_first_available(client, "iau_mpc", MPC_ORB_URL, "desig", candidates)
+        mpc, statuses, matched = await fetch_mpc_orbit(client, candidates, request_limiter=request_limiter)
         profile["agencies"]["mpc"] = mpc
         profile["identifiers"]["mpc_lookup"] = matched
         profile["_fetch_status"].extend(statuses)
@@ -378,8 +479,9 @@ async def run_ingestion_cycle(producer):
         return
 
     async with httpx.AsyncClient(timeout=20.0) as client:
+        ssd_request_limiter = asyncio.Semaphore(max(1, AGENCY_SSD_CONCURRENCY))
         esa_risk_text = await fetch_esa_risk_list(client)
-        sentry_seeds = await fetch_sentry_seed_objects(client)
+        sentry_seeds = await fetch_sentry_seed_objects(client, request_limiter=ssd_request_limiter)
         known_ids = {a["asteroid_id"] for a in asteroids}
         asteroids.extend([s for s in sentry_seeds if s["asteroid_id"] not in known_ids])
 
@@ -402,7 +504,13 @@ async def run_ingestion_cycle(producer):
                 async with sem:
                     ast_id = ast["asteroid_id"]
                     held_sources = get_held_sources(ast_id)
-                    profile = await fetch_profile(client, ast, esa_risk_text, held_sources)
+                    profile = await fetch_profile(
+                        client,
+                        ast,
+                        esa_risk_text,
+                        held_sources,
+                        request_limiter=ssd_request_limiter,
+                    )
                     update_fetch_statuses(ast_id, profile.pop("_fetch_status", []))
                     # Push to Kafka
                     producer.send(

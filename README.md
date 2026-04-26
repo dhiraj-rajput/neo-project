@@ -75,8 +75,8 @@ On a fresh Docker volume, TimescaleDB automatically runs:
 If you already had a database volume and pulled new code, manually apply the schema updates:
 
 ```powershell
-Get-Content src/db/schema.sql | docker exec -i timescaledb psql -U neo_user -d neo_db
-Get-Content src/db/history_init.sql | docker exec -i timescaledb psql -U neo_user -d neo_db
+Get-Content src/db/schema.sql | docker exec -it timescaledb psql -U neo_user -d neo_db
+Get-Content src/db/history_init.sql | docker exec -it timescaledb psql -U neo_user -d neo_db
 ```
 
 To confirm the database is reachable:
