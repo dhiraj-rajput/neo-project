@@ -289,7 +289,7 @@ class MultiKeyRateLimiter:
             # Set individual key cooldown (can be same as base or shorter, but safe to set to base)
             self.key_cooldowns[key] = time.time() + self.base_cooldown
             logger.warning(
-                f"⚠️ Key {key[-4:]} hit 429. Marked failed for this round."
+                f"Key {key[-4:]} hit 429. Marked failed for this round."
             )
 
     def report_success(self, key):
@@ -319,7 +319,7 @@ def fetch_and_send(start_date, end_date, limiter, producer, session):
     send_failed = threading.Event()
 
     def on_send_error(excp):
-        logger.error(f"❌ Kafka send failed: {excp}")
+        logger.error(f"Kafka send failed: {excp}")
         send_failed.set()
 
     try:
@@ -377,11 +377,11 @@ def fetch_and_send(start_date, end_date, limiter, producer, session):
             return "NOT_FOUND"
         
         else:
-            logger.error(f"❌ API Error {resp.status_code}: {resp.text[:200]}")
+            logger.error(f"NeoWs API error {resp.status_code}: {resp.text[:200]}")
             return False
 
     except Exception as e:
-        logger.error(f"❌ Request failed ({start_date}): {e}")
+        logger.error(f"NeoWs request failed ({start_date}): {e}")
         return False
 
 # =========================================================
@@ -400,7 +400,7 @@ def run_cycle(target_run_id=None):
     Config.RUN_ID = run_id
     update_log_file(run_id)
     
-    logger.info(f"🔄 STARTING INGESTION RUN: {datetime.now()} (ID: {run_id})")
+    logger.info(f"Starting ingestion run at {datetime.now()} (id: {run_id})")
     PipelineStatus.update("RUNNING", run_id=run_id)
 
     # High reliability + High Throughput Producer
@@ -458,16 +458,16 @@ def run_cycle(target_run_id=None):
             checkpoint.register_window(s_str, e_str, status="PENDING")
 
         if not tasks:
-            logger.info("✨ No pending windows to process for this run.")
+            logger.info("No pending windows to process for this run.")
             return
 
-        logger.info(f"📅 Remaining Windows to Process: {len(tasks)}")
+        logger.info(f"Remaining windows to process: {len(tasks)}")
 
         # 4. Process with Dynamic Retry Loop
         total_sent = sum(w["records"] for w in checkpoint.windows.values() if w["status"] == "SUCCESS")
         last_flush_count = 0 
         max_workers = len(limiter.keys) * 2
-        logger.info(f"🚀 Launching with {max_workers} parallel workers")
+        logger.info(f"Launching with {max_workers} parallel workers.")
         
         with Progress(
             SpinnerColumn(),
@@ -535,12 +535,12 @@ def run_cycle(target_run_id=None):
                                 progress.advance(main_task)
 
                         except Exception as e:
-                            logger.error(f"❌ Worker Exception: {e}")
+                            logger.exception(f"Worker exception: {e}")
                             checkpoint.mark_failed(start_key, end_key, str(e))
                             progress.advance(main_task)
 
         sys.stdout.write("\n")
-        logger.info(f"✅ Run Execution Finished. Flushing Kafka...")
+        logger.info("Run execution finished. Flushing Kafka.")
         
     finally:
         # Graceful shutdown
@@ -559,14 +559,14 @@ def run_cycle(target_run_id=None):
     )
 
     # Rich summary table
-    table = Table(title="🚀 Run Summary", show_header=True, header_style="bold cyan")
+    table = Table(title="Run Summary", show_header=True, header_style="bold cyan")
     table.add_column("Metric", style="dim")
     table.add_column("Value", justify="right", style="bold")
     table.add_row("Run ID", str(Config.RUN_ID))
     table.add_row("Total Windows", str(stats['total_windows']))
-    table.add_row("✅ Successful", f"[green]{stats['successful_windows']}[/green]")
-    table.add_row("❌ Failed", f"[red]{stats['failed_windows']}[/red]")
-    table.add_row("⏳ Pending", f"[yellow]{stats['pending_windows']}[/yellow]")
+    table.add_row("Successful", f"[green]{stats['successful_windows']}[/green]")
+    table.add_row("Failed", f"[red]{stats['failed_windows']}[/red]")
+    table.add_row("Pending", f"[yellow]{stats['pending_windows']}[/yellow]")
     table.add_row("📦 Total Records", f"[bold white]{stats['total_records_sent']:,}[/bold white]")
     console.print(table)
 
@@ -580,7 +580,7 @@ def run_delta_cycle():
     Config.RUN_ID = run_id
     update_log_file(run_id)
 
-    logger.info(f"🔄 DELTA SCAN: Fetching current week data (ID: {run_id})")
+    logger.info(f"Delta scan: fetching current week data (id: {run_id})")
     PipelineStatus.update("RUNNING", run_id=run_id)
 
     producer = KafkaProducer(
@@ -619,14 +619,14 @@ def run_delta_cycle():
 
             if result == "NOT_FOUND":
                 hold_until = mark_window_not_found(s_str, e_str)
-                logger.warning(f"⏭ Delta window [{s_str} -> {e_str}] held after 404 until {hold_until.date()}")
+                logger.warning(f"Delta window [{s_str} -> {e_str}] held after 404 until {hold_until.date()}")
                 curr = window_end + timedelta(days=1)
                 continue
 
             if result is not False and result != "RETRY":
                 count = int(result)
                 total_sent += count
-                logger.info(f"✅ Delta [{s_str} -> {e_str}]: {count} records")
+                logger.info(f"Delta [{s_str} -> {e_str}]: {count} records")
 
             curr = window_end + timedelta(days=1)
 
@@ -637,7 +637,7 @@ def run_delta_cycle():
         PipelineStatus.update("COMPLETED")
 
     console.print(Panel(
-        f"[bold green]✅ Delta Scan Complete[/bold green]\n"
+        f"[bold green]Delta scan complete[/bold green]\n"
         f"Records refreshed: [bold]{total_sent:,}[/bold]",
         title="Delta Cycle",
         border_style="green",
@@ -672,37 +672,37 @@ def main():
     # Phase 1: Full historical backfill
     latest_run = get_latest_run_id()
     if latest_run:
-        logger.info(f"🚀 Found previous run: {latest_run}. Resuming...")
+        logger.info(f"Found previous run: {latest_run}. Resuming.")
     else:
-        logger.info("🚀 Phase 1: Full historical backfill starting...")
+        logger.info("Phase 1: full historical backfill starting.")
     
     try:
         run_cycle(target_run_id=latest_run)
     except Exception as e:
-        logger.critical(f"🔥 Critical Failure in initial backfill: {e}")
+        logger.exception(f"Critical failure in initial backfill: {e}")
 
     last_full_scan = time.time()
 
     # Phase 2: Continuous monitoring loop
-    logger.info("🔁 Phase 2: Entering continuous monitoring mode (24h cycle)")
+    logger.info("Phase 2: entering continuous monitoring mode (24h cycle).")
     while True:
         try:
             elapsed_since_full = time.time() - last_full_scan
 
             if elapsed_since_full >= FULL_SCAN_INTERVAL:
                 # Time for a full re-scan
-                logger.info("🔄 Periodic full re-scan triggered")
+                logger.info("Periodic full re-scan triggered.")
                 run_cycle()
                 last_full_scan = time.time()
 
         except Exception as e:
-            logger.critical(f"🔥 Critical Failure in pipeline loop: {e}")
+            logger.exception(f"Critical failure in pipeline loop: {e}")
 
         wait_time = FULL_SCAN_INTERVAL - (time.time() - last_full_scan)
         if wait_time <= 0:
             wait_time = 60 # failsafe
         
-        logger.info(f"💤 Next FULL scan in {int(wait_time // 3600)} hours...")
+        logger.info(f"Next full scan in {int(wait_time // 3600)} hours.")
         PipelineStatus.update("SLEEPING", wake_at=time.time() + wait_time, reason="SCHEDULED")
         force_flush()
         time.sleep(wait_time)

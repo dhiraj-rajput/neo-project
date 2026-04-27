@@ -8,7 +8,6 @@ from datetime import datetime, date
 from decimal import Decimal
 from typing import Optional
 import time
-import logging
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -19,7 +18,9 @@ import httpx
 import os
 import json
 
-logger = logging.getLogger("neo-api")
+from src.logger import get_logger
+
+logger = get_logger("neo-api", "api.log")
 
 app = FastAPI(
     title="NEO Orbital Tracker API",
@@ -288,70 +289,193 @@ async def search_asteroids(q: str = Query(..., min_length=1, description="Search
 @app.get("/api/asteroid/{designation}")
 async def get_asteroid_profile(designation: str):
     """
-    Unified Multi-Agency Profile: Fetches consolidated data from local relational tables.
-    Returns the nested structure expected by the frontend.
+    Unified Multi-Agency Profile.
+    
+    Supports lookup by: asteroid_id, name, SBDB designation, SBDB spkid,
+    or Sentry designation. This fixes the Sentry watchlist → profile
+    navigation bug.
     """
     try:
         with get_db() as conn:
             cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-            
-            cur.execute("SELECT * FROM neo_agency_sbdb WHERE asteroid_id = %s", (designation,))
-            sbdb = cur.fetchone()
-            cur.execute("SELECT * FROM neo_agency_sentry WHERE asteroid_id = %s", (designation,))
-            sentry = cur.fetchone()
-            cur.execute("SELECT * FROM neo_agency_esa WHERE asteroid_id = %s", (designation,))
-            esa = cur.fetchone()
-            cur.execute("SELECT * FROM neo_agency_mpc WHERE asteroid_id = %s", (designation,))
-            mpc = cur.fetchone()
-            cur.execute("SELECT * FROM neo_agency_cad WHERE asteroid_id = %s ORDER BY approach_date ASC LIMIT 50", (designation,))
-            cad_list = cur.fetchall()
-            
-            if not sbdb:
+
+            # ── Multi-identifier resolution ──
+            # Try asteroid_id first (most common), then SBDB designation/spkid,
+            # then name, then Sentry designation.
+            asteroid_id = None
+
+            cur.execute("SELECT asteroid_id FROM neo_agency_sbdb WHERE asteroid_id = %s", (designation,))
+            row = cur.fetchone()
+            if row:
+                asteroid_id = row["asteroid_id"]
+
+            if not asteroid_id:
+                cur.execute("SELECT asteroid_id FROM neo_agency_sbdb WHERE designation = %s OR spkid = %s", (designation, designation))
+                row = cur.fetchone()
+                if row:
+                    asteroid_id = row["asteroid_id"]
+
+            if not asteroid_id:
+                cur.execute("SELECT asteroid_id FROM neo_agency_sentry WHERE designation = %s OR fullname ILIKE %s", (designation, f"%{designation}%"))
+                row = cur.fetchone()
+                if row:
+                    asteroid_id = row["asteroid_id"]
+
+            if not asteroid_id:
+                cur.execute("""
+                    SELECT DISTINCT asteroid_id FROM neo_close_approaches
+                    WHERE asteroid_id = %s OR name ILIKE %s
+                    LIMIT 1
+                """, (designation, f"%{designation}%"))
+                row = cur.fetchone()
+                if row:
+                    asteroid_id = row["asteroid_id"]
+
+            if not asteroid_id:
+                # Try external SBDB as last resort
+                sbdb_ext = await _fetch_json(JPL_SBDB_URL, {"sstr": designation})
+                if sbdb_ext and "object" in sbdb_ext:
+                    return {
+                        "designation": designation,
+                        "message": "Found in SBDB but not yet ingested locally.",
+                        "external_sbdb": {
+                            "fullname": sbdb_ext["object"].get("fullname"),
+                            "des": sbdb_ext["object"].get("des"),
+                            "neo": sbdb_ext["object"].get("neo"),
+                            "pha": sbdb_ext["object"].get("pha"),
+                        },
+                        "agencies": {},
+                    }
                 return {"designation": designation, "message": "Profile pending ingestion.", "agencies": {}}
 
-            # Format for Frontend (AsteroidProfile.tsx)
+            # ── Fetch all agency data ──
+            cur.execute("SELECT * FROM neo_agency_sbdb WHERE asteroid_id = %s", (asteroid_id,))
+            sbdb = cur.fetchone()
+            cur.execute("SELECT * FROM neo_agency_sentry WHERE asteroid_id = %s", (asteroid_id,))
+            sentry = cur.fetchone()
+            cur.execute("SELECT * FROM neo_agency_esa WHERE asteroid_id = %s", (asteroid_id,))
+            esa = cur.fetchone()
+            cur.execute("SELECT * FROM neo_agency_mpc WHERE asteroid_id = %s", (asteroid_id,))
+            mpc = cur.fetchone()
+            cur.execute("SELECT * FROM neo_agency_cad WHERE asteroid_id = %s ORDER BY approach_date DESC LIMIT 50", (asteroid_id,))
+            cad_list = cur.fetchall()
+
+            # ── Build response ──
             profile = {
                 "designation": designation,
-                "name": sbdb.get("name") or designation,
-                "pha": sbdb.get("pha", False),
-                "agencies": {
-                    "jpl_sbdb": {
-                        "orbital_elements": {
-                            "epoch": {"title": "Epoch", "value": str(sbdb.get("epoch_tdb")), "units": "TDB"},
-                            "moid": {"title": "MOID", "value": str(sbdb.get("moid_au")), "units": "AU"},
-                            "condition": {"title": "Condition Code", "value": sbdb.get("condition_code"), "units": ""},
-                            "arc": {"title": "Data Arc", "value": str(sbdb.get("data_arc_days")), "units": "days"},
-                        },
-                        "physical_params": {
-                            "h": {"title": "Absolute Mag (H)", "value": str(sbdb.get("absolute_magnitude_h")), "units": "mag"},
-                            "diameter": {"title": "Diameter", "value": str(sbdb.get("diameter_km")), "units": "km"},
-                            "albedo": {"title": "Albedo", "value": str(sbdb.get("albedo")), "units": ""},
-                        },
-                        "discovery": {
-                            "date": str(sbdb.get("discovery_date")),
-                            "site": sbdb.get("discovery_site")
-                        }
-                    },
-                    "jpl_sentry": {
-                        "status": sentry.get("status") if sentry else "not_found",
-                        "impact_probability": str(sentry.get("impact_probability")) if sentry else None,
-                        "torino_scale": str(sentry.get("torino_scale")) if sentry else "0",
-                        "palermo_scale": str(sentry.get("palermo_scale")) if sentry else None,
-                        "diameter_km": str(sentry.get("diameter_km")) if sentry else None,
-                    } if sentry else None,
-                    "jpl_cad": {
-                        "count": len(cad_list),
-                        "approaches": [{"cd": str(c["approach_date"]), "dist": str(c["distance_au"]), "v_rel": str(c["v_rel_km_s"])} for c in cad_list]
-                    },
-                    "esa_neocc": {
-                        "on_risk_list": esa.get("on_risk_list", False)
-                    } if esa else None,
-                    "iau_mpc": {
-                        "status": mpc.get("status", "found")
-                    } if mpc else None
-                }
+                "asteroid_id": asteroid_id,
+                "name": (sbdb.get("fullname") if sbdb else None) or designation,
+                "is_neo": sbdb.get("is_neo", False) if sbdb else None,
+                "is_pha": sbdb.get("is_pha", False) if sbdb else None,
+                "agencies": {},
             }
-            
+
+            # SBDB
+            if sbdb:
+                sbdb = serialize_row(dict(sbdb))
+                profile["agencies"]["jpl_sbdb"] = {
+                    "designation": sbdb.get("designation"),
+                    "fullname": sbdb.get("fullname"),
+                    "spkid": sbdb.get("spkid"),
+                    "orbit_class": sbdb.get("orbit_class"),
+                    "orbit_class_name": sbdb.get("orbit_class_name"),
+                    "orbital_elements": {
+                        "epoch": {"title": "Epoch", "value": sbdb.get("epoch_tdb"), "units": "TDB"},
+                        "e": {"title": "Eccentricity", "value": sbdb.get("eccentricity"), "units": ""},
+                        "a": {"title": "Semi-major Axis", "value": sbdb.get("semi_major_axis_au"), "units": "AU"},
+                        "q": {"title": "Perihelion Dist", "value": sbdb.get("perihelion_dist_au"), "units": "AU"},
+                        "ad": {"title": "Aphelion Dist", "value": sbdb.get("aphelion_dist_au"), "units": "AU"},
+                        "i": {"title": "Inclination", "value": sbdb.get("inclination_deg"), "units": "deg"},
+                        "om": {"title": "Long. Asc. Node", "value": sbdb.get("long_asc_node_deg"), "units": "deg"},
+                        "w": {"title": "Arg. Perihelion", "value": sbdb.get("arg_perihelion_deg"), "units": "deg"},
+                        "ma": {"title": "Mean Anomaly", "value": sbdb.get("mean_anomaly_deg"), "units": "deg"},
+                        "per": {"title": "Orbital Period", "value": sbdb.get("orbital_period_days"), "units": "days"},
+                        "n": {"title": "Mean Motion", "value": sbdb.get("mean_motion_deg_d"), "units": "deg/d"},
+                        "moid": {"title": "MOID", "value": sbdb.get("moid_au"), "units": "AU"},
+                        "condition": {"title": "Condition Code", "value": sbdb.get("condition_code"), "units": ""},
+                        "arc": {"title": "Data Arc", "value": sbdb.get("data_arc_days"), "units": "days"},
+                        "n_obs": {"title": "Observations Used", "value": sbdb.get("n_obs_used"), "units": ""},
+                    },
+                    "physical_params": {
+                        "h": {"title": "Absolute Mag (H)", "value": sbdb.get("absolute_magnitude_h"), "units": "mag"},
+                        "diameter": {"title": "Diameter", "value": sbdb.get("diameter_km"), "units": "km"},
+                        "albedo": {"title": "Albedo", "value": sbdb.get("albedo"), "units": ""},
+                        "rot_per": {"title": "Rotation Period", "value": sbdb.get("rotation_period_h"), "units": "h"},
+                        "spec_type": {"title": "Spectral Type", "value": sbdb.get("spectral_type"), "units": ""},
+                    },
+                    "discovery": {
+                        "date": sbdb.get("discovery_date"),
+                        "site": sbdb.get("discovery_site"),
+                    },
+                }
+
+            # Sentry
+            if sentry:
+                sentry = serialize_row(dict(sentry))
+                profile["agencies"]["jpl_sentry"] = {
+                    "status": sentry.get("status"),
+                    "method": sentry.get("method"),
+                    "impact_probability": sentry.get("impact_probability"),
+                    "torino_scale": sentry.get("torino_scale"),
+                    "palermo_scale_cum": sentry.get("palermo_scale_cum"),
+                    "palermo_scale_max": sentry.get("palermo_scale_max"),
+                    "n_impacts": sentry.get("n_impacts"),
+                    "v_infinity_km_s": sentry.get("v_infinity_km_s"),
+                    "energy_mt": sentry.get("energy_mt"),
+                    "diameter_km": sentry.get("diameter_km"),
+                    "h_mag": sentry.get("h_mag"),
+                    "removed_date": sentry.get("removed_date"),
+                }
+
+            # CAD
+            if cad_list:
+                profile["agencies"]["jpl_cad"] = {
+                    "count": len(cad_list),
+                    "approaches": [
+                        serialize_row({
+                            "date": c["approach_date"],
+                            "datetime": c.get("approach_datetime"),
+                            "dist_au": c["distance_au"],
+                            "dist_min_au": c.get("distance_min_au"),
+                            "dist_max_au": c.get("distance_max_au"),
+                            "v_rel_km_s": c["v_rel_km_s"],
+                            "v_inf_km_s": c.get("v_inf_km_s"),
+                            "h_mag": c.get("h_mag"),
+                            "diameter_km": c.get("diameter_km"),
+                            "body": c.get("body", "Earth"),
+                        })
+                        for c in cad_list
+                    ],
+                }
+
+            # ESA
+            if esa:
+                esa = serialize_row(dict(esa))
+                profile["agencies"]["esa_neocc"] = {
+                    "on_risk_list": esa.get("on_risk_list", False),
+                    "designation": esa.get("esa_designation"),
+                    "moid": esa.get("esa_moid"),
+                    "h": esa.get("esa_h"),
+                    "diameter_km": esa.get("esa_diameter_km"),
+                }
+
+            # MPC
+            if mpc:
+                mpc = serialize_row(dict(mpc))
+                profile["agencies"]["iau_mpc"] = {
+                    "status": mpc.get("status", "found"),
+                    "designation": mpc.get("mpc_designation"),
+                    "name": mpc.get("mpc_name"),
+                    "orbital_elements": {
+                        "a": mpc.get("semi_major_axis_au"),
+                        "e": mpc.get("eccentricity"),
+                        "i": mpc.get("inclination_deg"),
+                        "om": mpc.get("long_asc_node_deg"),
+                        "w": mpc.get("arg_perihelion_deg"),
+                        "ma": mpc.get("mean_anomaly_deg"),
+                    },
+                }
+
             cur.close()
             return profile
 

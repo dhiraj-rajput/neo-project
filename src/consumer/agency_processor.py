@@ -1,314 +1,298 @@
+"""
+Agency Kafka Consumer / Processor
+
+Consumes messages from the 'agency_ingest' Kafka topic and upserts
+into the respective neo_agency_* tables.
+
+Column lists are derived from LIVE API field discovery (2026-04-27)
+and exactly match schema.sql v4. Zero JSONB — every field stored.
+"""
+
 import json
+import hashlib
 import os
+
 import psycopg2
-from psycopg2.extras import execute_values
 from contextlib import contextmanager
-from pyspark.sql import SparkSession
-from pyspark.sql.functions import col, from_json, concat_ws, md5, lit
-from pyspark.sql.types import StructType, StructField, StringType, BooleanType, DoubleType, IntegerType
+from kafka import KafkaConsumer
 
 from src.config import Config
-from src.logger import logger, console
+from src.logger import logger
 
-AGENCY_TOPIC = "agency_ingest"
-CHECKPOINT_DIR = "/tmp/spark-checkpoints/agency"
+
+AGENCY_TOPIC = os.getenv("AGENCY_TOPIC", "agency_ingest")
+CONSUMER_GROUP = "agency-processor-v4"
+
 
 @contextmanager
 def db_connection():
     conn = None
     try:
         conn = psycopg2.connect(
-            host=Config.DB_HOST, port=Config.DB_PORT, 
-            dbname=Config.DB_NAME, user=Config.DB_USER, password=Config.DB_PASSWORD
+            host=Config.DB_HOST, port=Config.DB_PORT,
+            dbname=Config.DB_NAME, user=Config.DB_USER, password=Config.DB_PASSWORD,
         )
         yield conn
     except Exception as e:
-        logger.error(f"DB Connection Error: {e}")
-        raise e
+        logger.error(f"DB connection error: {e}")
+        raise
     finally:
         if conn:
             conn.close()
 
-def chunked_execute_values(cur, sql, vals, chunk_size=1000):
-    for i in range(0, len(vals), chunk_size):
-        execute_values(cur, sql, vals[i:i+chunk_size])
+
+def compute_hash(record: dict) -> str:
+    """Deterministic MD5 hash of all values for CDC."""
+    raw = "||".join(str(v) for v in sorted(record.items()))
+    return hashlib.md5(raw.encode()).hexdigest()
 
 
-def none_if_blank(value):
-    if value in ("", None):
-        return None
-    return value
+# ──────────────────────────────────────────────────────────────
+# SBDB Upsert — 63 columns (object + orbit + elements + phys + discovery)
+# Matches: neo_agency_sbdb schema v4
+# ──────────────────────────────────────────────────────────────
+
+SBDB_COLUMNS = [
+    # object
+    "asteroid_id", "designation", "fullname", "shortname", "spkid",
+    "object_kind", "prefix", "orbit_class", "orbit_class_name", "orbit_id",
+    "is_neo", "is_pha", "des_alt",
+    # orbit metadata
+    "epoch_tdb", "cov_epoch", "equinox", "orbit_source", "producer",
+    "soln_date", "pe_used", "sb_used", "two_body", "comment",
+    "not_valid_before", "not_valid_after",
+    # Keplerian elements
+    "eccentricity", "semi_major_axis_au", "perihelion_dist_au", "aphelion_dist_au",
+    "inclination_deg", "long_asc_node_deg", "arg_perihelion_deg",
+    "mean_anomaly_deg", "time_perihelion_tdb", "orbital_period_days", "mean_motion_deg_d",
+    # orbit quality
+    "moid_au", "moid_jup", "t_jup", "condition_code",
+    "data_arc_days", "n_obs_used", "n_del_obs_used", "n_dop_obs_used", "rms",
+    "first_obs_date", "last_obs_date", "model_pars",
+    # physical parameters
+    "absolute_magnitude_h", "magnitude_slope_g", "diameter_km", "albedo",
+    "rotation_period_h", "thermal_inertia", "spectral_type",
+    # discovery
+    "discovery_date", "discovery_site", "discovery_location",
+    "discovery_who", "discovery_name", "discovery_ref",
+    "discovery_cref", "discovery_text", "discovery_citation",
+    # meta
+    "row_hash",
+]
 
 
-def to_float(value):
-    value = none_if_blank(value)
-    if value is None:
-        return None
+def upsert_sbdb(cur, asteroid_id: str, data: dict):
+    data["asteroid_id"] = asteroid_id
+    data["row_hash"] = compute_hash(data)
+    vals = [data.get(c) for c in SBDB_COLUMNS]
+    placeholders = ",".join(["%s"] * len(SBDB_COLUMNS))
+    updates = ",".join(f"{c}=EXCLUDED.{c}" for c in SBDB_COLUMNS if c != "asteroid_id")
+    sql = f"""
+        INSERT INTO neo_agency_sbdb ({','.join(SBDB_COLUMNS)})
+        VALUES ({placeholders})
+        ON CONFLICT (asteroid_id) DO UPDATE SET {updates}
+    """
+    cur.execute(sql, vals)
+
+
+# ──────────────────────────────────────────────────────────────
+# Sentry Upsert — 26 columns
+# summary: des, fullname, method, ip, ts_max, ps_cum, ps_max, n_imp,
+#          v_inf, v_imp, energy, mass, diameter, h, first_obs, last_obs,
+#          darc, nobs, ndel, ndop, nsat, pdate, cdate
+# watchlist extras: id (→sentry_id), range(→impact_date_range), last_obs_jd
+# ──────────────────────────────────────────────────────────────
+
+SENTRY_COLUMNS = [
+    "asteroid_id", "status", "designation", "fullname", "sentry_id", "method",
+    "impact_probability", "torino_scale", "palermo_scale_cum", "palermo_scale_max",
+    "n_impacts", "impact_date_range",
+    "v_infinity_km_s", "v_impact_km_s", "energy_mt", "mass_kg",
+    "diameter_km", "h_mag",
+    "first_obs", "last_obs", "last_obs_jd", "arc_days",
+    "n_obs", "n_del", "n_dop", "n_sat",
+    "pdate", "cdate", "removed_date",
+    "row_hash",
+]
+
+
+def upsert_sentry(cur, asteroid_id: str, data: dict):
+    data["asteroid_id"] = asteroid_id
+    data["row_hash"] = compute_hash(data)
+    vals = [data.get(c) for c in SENTRY_COLUMNS]
+    placeholders = ",".join(["%s"] * len(SENTRY_COLUMNS))
+    updates = ",".join(f"{c}=EXCLUDED.{c}" for c in SENTRY_COLUMNS if c != "asteroid_id")
+    sql = f"""
+        INSERT INTO neo_agency_sentry ({','.join(SENTRY_COLUMNS)})
+        VALUES ({placeholders})
+        ON CONFLICT (asteroid_id) DO UPDATE SET {updates}
+    """
+    cur.execute(sql, vals)
+
+
+# ──────────────────────────────────────────────────────────────
+# CAD Upsert — 16 columns (14 API fields + approach_date + body)
+# API fields: des, orbit_id, jd, cd(→approach_datetime+approach_date),
+#   dist, dist_min, dist_max, v_rel, v_inf, t_sigma_f, h,
+#   diameter, diameter_sigma, fullname
+# ──────────────────────────────────────────────────────────────
+
+CAD_COLUMNS = [
+    "asteroid_id", "approach_date",
+    "approach_datetime", "orbit_id", "jd",
+    "distance_au", "distance_min_au", "distance_max_au",
+    "v_rel_km_s", "v_inf_km_s", "t_sigma_f",
+    "h_mag", "diameter_km", "diameter_sigma",
+    "fullname", "body",
+    "row_hash",
+]
+
+
+def upsert_cad(cur, asteroid_id: str, records: list[dict]):
+    if not records:
+        return
+    for rec in records:
+        rec["asteroid_id"] = asteroid_id
+        rec["row_hash"] = compute_hash(rec)
+
+    placeholders = ",".join(["%s"] * len(CAD_COLUMNS))
+    updates = ",".join(f"{c}=EXCLUDED.{c}" for c in CAD_COLUMNS if c not in ("asteroid_id", "approach_date"))
+    sql = f"""
+        INSERT INTO neo_agency_cad ({','.join(CAD_COLUMNS)})
+        VALUES ({placeholders})
+        ON CONFLICT (asteroid_id, approach_date) DO UPDATE SET {updates}
+    """
+    for rec in records:
+        cur.execute(sql, [rec.get(c) for c in CAD_COLUMNS])
+
+
+# ──────────────────────────────────────────────────────────────
+# ESA Upsert — 14 columns matching v4 schema
+# Parsed from pipe-delimited file
+# ──────────────────────────────────────────────────────────────
+
+ESA_COLUMNS = [
+    "asteroid_id", "on_risk_list", "esa_designation", "esa_name",
+    "diameter_m", "diameter_certain",
+    "vi_date", "ip_max", "ps_max", "ts", "vel_km_s",
+    "years", "ip_cum", "ps_cum",
+    "row_hash",
+]
+
+
+def upsert_esa(cur, asteroid_id: str, data: dict):
+    data["asteroid_id"] = asteroid_id
+    data["row_hash"] = compute_hash(data)
+    vals = [data.get(c) for c in ESA_COLUMNS]
+    placeholders = ",".join(["%s"] * len(ESA_COLUMNS))
+    updates = ",".join(f"{c}=EXCLUDED.{c}" for c in ESA_COLUMNS if c != "asteroid_id")
+    sql = f"""
+        INSERT INTO neo_agency_esa ({','.join(ESA_COLUMNS)})
+        VALUES ({placeholders})
+        ON CONFLICT (asteroid_id) DO UPDATE SET {updates}
+    """
+    cur.execute(sql, vals)
+
+
+# ──────────────────────────────────────────────────────────────
+# Fireball Upsert — 9 columns (all API fields)
+# API fields: date, energy, impact-e, lat, lat-dir, lon, lon-dir, alt, vel
+# ──────────────────────────────────────────────────────────────
+
+FIREBALL_COLUMNS = [
+    "event_date",
+    "total_radiated_energy_j", "impact_energy_kt",
+    "latitude", "latitude_dir", "longitude", "longitude_dir",
+    "altitude_km", "velocity_km_s",
+    "row_hash",
+]
+
+
+def upsert_fireballs(cur, records: list[dict]):
+    if not records:
+        return
+    for rec in records:
+        rec["row_hash"] = compute_hash(rec)
+
+    placeholders = ",".join(["%s"] * len(FIREBALL_COLUMNS))
+    updates = ",".join(f"{c}=EXCLUDED.{c}" for c in FIREBALL_COLUMNS if c != "event_date")
+    sql = f"""
+        INSERT INTO neo_fireball_events ({','.join(FIREBALL_COLUMNS)})
+        VALUES ({placeholders})
+        ON CONFLICT (event_date) DO UPDATE SET {updates}
+    """
+    for rec in records:
+        cur.execute(sql, [rec.get(c) for c in FIREBALL_COLUMNS])
+
+
+# ──────────────────────────────────────────────────────────────
+# Main Consumer Loop
+# ──────────────────────────────────────────────────────────────
+
+def process_message(msg_bytes: bytes):
+    """Process a single Kafka message containing multi-agency data."""
     try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None
-
-
-def to_int(value):
-    value = none_if_blank(value)
-    if value is None:
-        return None
-    try:
-        return int(float(value))
-    except (TypeError, ValueError):
-        return None
-
-
-def kafka_value_to_text(value):
-    return value.decode("utf-8") if isinstance(value, (bytes, bytearray)) else str(value)
-
-
-def process_batch(batch_df, batch_id):
-    if batch_df.isEmpty():
+        payload = json.loads(msg_bytes.decode("utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError) as e:
+        logger.warning(f"Skipping malformed message: {e}")
         return
 
-    # We get a raw JSON string from Kafka
-    rows = batch_df.select("value").collect()
-    
-    # Process locally in Python since Spark JSON parsing for deeply nested 
-    # highly-variable API structures is brittle and complex.
-    # Since agency data volume is low (500 records/day), Python list processing is fast enough.
-    
-    sbdb_upserts, sbdb_history = [], []
-    sentry_upserts, sentry_history = [], []
-    esa_upserts, esa_history = [], []
-    mpc_upserts, mpc_history = [], []
-    cad_upserts, cad_history = [], []
-    
-    for row in rows:
-        try:
-            payload = json.loads(kafka_value_to_text(row["value"]))
-            ast_id = payload.get("asteroid_id")
-            agencies = payload.get("agencies", {})
-            
-            # --- 1. SBDB ---
-            sbdb = agencies.get("sbdb")
-            if sbdb and "object" in sbdb:
-                obj = sbdb["object"]
-                orb = sbdb.get("orbit", {})
-                
-                # Extract fields safely
-                def get_elem(name):
-                    for el in orb.get("elements", []):
-                        if el.get("name") == name:
-                            try:
-                                return float(el.get("value"))
-                            except:
-                                return None
-                    return None
-                    
-                sbdb_rec = {
-                    "asteroid_id": ast_id,
-                    "orbit_class": obj.get("orbit_class", {}).get("name"),
-                    "spkid": obj.get("spkid"),
-                    "epoch_tdb": to_float(orb.get("epoch")),
-                    "data_arc_days": to_int(orb.get("data_arc")),
-                    "n_obs_used": to_int(orb.get("n_obs_used")),
-                    "condition_code": str(orb.get("condition_code")) if orb.get("condition_code") is not None else None,
-                    "moid_au": to_float(orb.get("moid")),
-                    "first_obs_date": none_if_blank(orb.get("first_obs")),
-                    "last_obs_date": none_if_blank(orb.get("last_obs")),
-                    "absolute_magnitude_h": get_elem("H"),
-                    "diameter_km": None, # physical params usually separate
-                    "albedo": None,
-                    "discovery_date": none_if_blank(sbdb.get("discovery", {}).get("date")),
-                    "discovery_site": sbdb.get("discovery", {}).get("site")
-                }
-                
-                # Physical params
-                for p in sbdb.get("phys_par", []):
-                    if p["name"] == "diameter":
-                        sbdb_rec["diameter_km"] = to_float(p.get("value"))
-                    if p["name"] == "albedo":
-                        sbdb_rec["albedo"] = to_float(p.get("value"))
-                
-                # Hash for history
-                hash_str = str(sbdb_rec["epoch_tdb"]) + str(sbdb_rec["n_obs_used"])
-                sbdb_rec["row_hash"] = hash_str
-                sbdb_upserts.append(sbdb_rec)
-                
-            # --- 2. SENTRY ---
-            sentry = agencies.get("sentry")
-            if sentry:
-                summary = sentry.get("summary", {})
-                status = "removed" if "removed" in sentry else "active"
-                
-                sentry_rec = {
-                    "asteroid_id": ast_id,
-                    "status": status,
-                    "impact_probability": to_float(summary.get("ip")),
-                    "torino_scale": to_int(summary.get("ts_max")) or 0,
-                    "palermo_scale": to_float(summary.get("ps_cum")),
-                    "n_impacts": to_int(summary.get("n_imp")) or 0,
-                    "v_infinity_km_s": to_float(summary.get("v_inf")),
-                    "energy_mt": to_float(summary.get("energy")),
-                }
-                sentry_rec["row_hash"] = str(sentry_rec["impact_probability"]) + str(sentry_rec["n_impacts"])
-                sentry_upserts.append(sentry_rec)
-                
-            # --- 3. ESA ---
-            esa = agencies.get("esa")
-            if esa:
-                esa_rec = {
-                    "asteroid_id": ast_id,
-                    "on_risk_list": esa.get("on_risk_list", False),
-                    "priority_list": 0 # Not parsed easily from text, defaulting
-                }
-                esa_rec["row_hash"] = str(esa_rec["on_risk_list"])
-                esa_upserts.append(esa_rec)
-                
-            # --- 4. MPC ---
-            mpc = agencies.get("mpc")
-            if mpc:
-                mpc_first = mpc[0] if isinstance(mpc, list) and mpc else mpc
-                orb = mpc_first.get("mpc_orb", mpc_first if isinstance(mpc_first, dict) else {})
-                mpc_rec = {
-                    "asteroid_id": ast_id,
-                    "status": "found",
-                    "mpc_designation": orb.get("number") or orb.get("designation"),
-                    "epoch": to_float(orb.get("epoch")),
-                    "eccentricity": to_float(orb.get("eccentricity")),
-                    "inclination": to_float(orb.get("inclination")),
-                }
-                mpc_rec["row_hash"] = str(mpc_rec["epoch"])
-                mpc_upserts.append(mpc_rec)
-                
-            # --- 5. CAD ---
-            cad = agencies.get("cad")
-            if cad and "data" in cad:
-                fields = cad.get("fields", [])
-                for cad_row in cad["data"][:50]:
-                    entry = dict(zip(fields, cad_row))
-                    try:
-                        cad_rec = {
-                            "asteroid_id": ast_id,
-                            "approach_date": entry.get("cd").split(" ")[0] if entry.get("cd") else None,
-                            "distance_au": to_float(entry.get("dist")),
-                            "v_rel_km_s": to_float(entry.get("v_rel"))
-                        }
-                        if cad_rec["approach_date"]:
-                            cad_rec["row_hash"] = str(cad_rec["distance_au"])
-                            cad_upserts.append(cad_rec)
-                    except:
-                        pass
-                        
-        except Exception as e:
-            logger.error(f"Error parsing JSON payload: {e}")
+    asteroid_id = payload.get("asteroid_id")
+    if not asteroid_id:
+        return
 
-    # ============================================
-    # DB WRITES
-    # ============================================
+    agencies = payload.get("agencies", {})
+
     with db_connection() as conn:
         with conn.cursor() as cur:
-            
-            def upsert_and_history(table, pk_cols, records):
-                if not records: return
-                cols = list(records[0].keys())
-                
-                # Fetch existing to compare hashes
-                ast_ids = list(set([r["asteroid_id"] for r in records]))
-                if not ast_ids: return
-                
-                cur.execute(f"SELECT {','.join(pk_cols)}, row_hash FROM {table} WHERE asteroid_id = ANY(%s)", (ast_ids,))
-                existing = cur.fetchall()
-                existing_dict = {tuple(str(r[i]) for i in range(len(pk_cols))): r[-1] for r in existing}
-                
-                inserts = []
-                updates = []
-                histories = []
-                
-                for rec in records:
-                    pk_val = tuple(str(rec[c]) for c in pk_cols)
-                    old_hash = existing_dict.get(pk_val)
-                    
-                    if old_hash is None:
-                        inserts.append(rec)
-                        hist = dict(rec)
-                        hist["change_type"] = "INSERT"
-                        histories.append(hist)
-                    elif old_hash != rec.get("row_hash"):
-                        updates.append(rec)
-                        hist = dict(rec)
-                        hist["change_type"] = "UPDATE"
-                        histories.append(hist)
-                        
-                to_upsert = inserts + updates
-                if to_upsert:
-                    vals = [[r[c] for c in cols] for r in to_upsert]
-                    updates_sql = [f"{c} = EXCLUDED.{c}" for c in cols if c not in pk_cols]
-                    sql = f"""
-                        INSERT INTO {table} ({','.join(cols)}) VALUES %s
-                        ON CONFLICT ({','.join(pk_cols)})
-                        DO UPDATE SET {','.join(updates_sql)}
-                    """
-                    chunked_execute_values(cur, sql, vals)
-                    
-                if histories:
-                    h_cols = cols + ["change_type"]
-                    h_vals = [[r.get(c) for c in h_cols] for r in histories]
-                    h_sql = f"INSERT INTO {table}_history ({','.join(h_cols)}) VALUES %s"
-                    chunked_execute_values(cur, h_sql, h_vals)
-                    
-            upsert_and_history("neo_agency_sbdb", ["asteroid_id"], sbdb_upserts)
-            upsert_and_history("neo_agency_sentry", ["asteroid_id"], sentry_upserts)
-            upsert_and_history("neo_agency_esa", ["asteroid_id"], esa_upserts)
-            upsert_and_history("neo_agency_mpc", ["asteroid_id"], mpc_upserts)
-            upsert_and_history("neo_agency_cad", ["asteroid_id", "approach_date"], cad_upserts)
+            sbdb = agencies.get("sbdb")
+            if sbdb:
+                upsert_sbdb(cur, asteroid_id, sbdb)
+
+            sentry = agencies.get("sentry")
+            if sentry:
+                upsert_sentry(cur, asteroid_id, sentry)
+
+            cad = agencies.get("cad")
+            if isinstance(cad, list) and cad:
+                upsert_cad(cur, asteroid_id, cad)
+
+            esa = agencies.get("esa")
+            if esa:
+                upsert_esa(cur, asteroid_id, esa)
+
+            # Fireball events are global (not per asteroid)
+            fireballs = agencies.get("fireball")
+            if isinstance(fireballs, list) and fireballs:
+                upsert_fireballs(cur, fireballs)
 
         conn.commit()
-    
-    logger.info(f"✅ Processed Agency Batch {batch_id} - [{len(sbdb_upserts)} SBDB, {len(sentry_upserts)} Sentry]")
 
+    logger.debug(f"Processed agency data for {asteroid_id}")
 
-def ensure_topic(topic_name):
-    """Ensures a Kafka topic exists before Spark attempts to read from it."""
-    from kafka.admin import KafkaAdminClient, NewTopic
-    try:
-        admin = KafkaAdminClient(bootstrap_servers=Config.KAFKA_BOOTSTRAP_SERVERS)
-        if topic_name not in admin.list_topics():
-            logger.info(f"✨ Creating missing topic: {topic_name}")
-            admin.create_topics([NewTopic(name=topic_name, num_partitions=6, replication_factor=1)])
-        admin.close()
-    except Exception as e:
-        logger.warning(f"⚠️ Topic verification failed for {topic_name}: {e}")
 
 def main():
-    logger.info("🚀 Starting Agency Spark Processor...")
-    
-    # Ensure topic exists
-    ensure_topic(AGENCY_TOPIC)
+    logger.info(f"Starting agency processor (topic={AGENCY_TOPIC}, group={CONSUMER_GROUP})")
 
-    spark = SparkSession.builder \
-        .appName("AgencyProcessor") \
-        .config("spark.jars.packages", "org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.3,org.postgresql:postgresql:42.7.3") \
-        .config("spark.sql.shuffle.partitions", "2") \
-        .config("spark.ui.port", "4041") \
-        .config("spark.driver.host", "localhost") \
-        .config("spark.driver.bindAddress", "127.0.0.1") \
-        .getOrCreate()
-        
-    spark.sparkContext.setLogLevel("WARN")
-    os.makedirs(CHECKPOINT_DIR, exist_ok=True)
+    consumer = KafkaConsumer(
+        AGENCY_TOPIC,
+        bootstrap_servers=Config.KAFKA_BOOTSTRAP_SERVERS,
+        group_id=CONSUMER_GROUP,
+        auto_offset_reset="earliest",
+        enable_auto_commit=True,
+        value_deserializer=None,
+    )
 
-    raw_df = spark.readStream.format("kafka") \
-        .option("kafka.bootstrap.servers", Config.KAFKA_BOOTSTRAP_SERVERS) \
-        .option("subscribe", AGENCY_TOPIC) \
-        .option("startingOffsets", "earliest") \
-        .load()
-        
-    query = raw_df.writeStream \
-        .foreachBatch(process_batch) \
-        .option("checkpointLocation", CHECKPOINT_DIR) \
-        .trigger(processingTime="10 seconds") \
-        .start()
-        
-    query.awaitTermination()
+    logger.info("Agency processor connected. Waiting for messages...")
+
+    try:
+        for message in consumer:
+            process_message(message.value)
+    except KeyboardInterrupt:
+        logger.info("Agency processor shutting down.")
+    finally:
+        consumer.close()
+
 
 if __name__ == "__main__":
     main()
