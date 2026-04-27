@@ -1,7 +1,4 @@
-"""
-Centralized logging with Rich console output.
-Provides a beautiful terminal experience while maintaining file-based log rotation.
-"""
+"""Centralized application logging."""
 import logging
 import sys
 import os
@@ -13,7 +10,6 @@ from rich.theme import Theme
 
 from src.config import Config
 
-# ── Rich Console (shared instance) ─────────────────────
 neo_theme = Theme({
     "info": "cyan",
     "warning": "yellow",
@@ -25,17 +21,26 @@ neo_theme = Theme({
 console = Console(theme=neo_theme, force_terminal=True)
 
 
+def _log_level() -> int:
+    level_name = os.getenv("LOG_LEVEL", "INFO").upper()
+    return getattr(logging, level_name, logging.INFO)
+
+
+def _file_formatter() -> logging.Formatter:
+    return logging.Formatter(
+        "%(asctime)s [%(levelname)s] [%(name)s] %(message)s"
+    )
+
+
 def setup_logger(name: str, log_filename: str) -> logging.Logger:
     """
-    Creates a logger with:
-      1. Rich console handler (beautiful terminal output)
-      2. TimedRotatingFileHandler (daily rotation, 7-day retention)
+    Create a logger with clean console output and daily rotating file logs.
     """
     logger = logging.getLogger(name)
-    logger.setLevel(logging.INFO)
+    logger.setLevel(_log_level())
+    logger.propagate = False
 
     if not logger.handlers:
-        # 1. Rich Console Handler
         rich_handler = RichHandler(
             console=console,
             show_time=True,
@@ -45,13 +50,13 @@ def setup_logger(name: str, log_filename: str) -> logging.Logger:
             tracebacks_show_locals=False,
         )
         rich_handler.setFormatter(logging.Formatter("%(message)s"))
+        rich_handler.setLevel(_log_level())
         logger.addHandler(rich_handler)
 
-        # 2. File Handler (plain text, rotating daily)
         try:
             if os.path.exists(Config.LOG_DIR):
                 if not os.path.isdir(Config.LOG_DIR):
-                    sys.stderr.write(f"⚠️ Removing file at {Config.LOG_DIR} to create directory...\n")
+                    sys.stderr.write(f"Removing file at {Config.LOG_DIR} to create log directory.\n")
                     os.remove(Config.LOG_DIR)
                     os.makedirs(Config.LOG_DIR, exist_ok=True)
             else:
@@ -59,14 +64,16 @@ def setup_logger(name: str, log_filename: str) -> logging.Logger:
                 
             log_path = os.path.join(Config.LOG_DIR, log_filename)
 
-            file_formatter = logging.Formatter(
-                "%(asctime)s [%(levelname)s] [%(name)s] %(message)s"
-            )
             fh = TimedRotatingFileHandler(
-                log_path, when="midnight", interval=1, backupCount=7
+                log_path,
+                when="midnight",
+                interval=1,
+                backupCount=int(os.getenv("LOG_RETENTION_DAYS", "14")),
+                encoding="utf-8",
             )
             fh.suffix = "%Y-%m-%d"
-            fh.setFormatter(file_formatter)
+            fh.setLevel(_log_level())
+            fh.setFormatter(_file_formatter())
             logger.addHandler(fh)
         except Exception as e:
             sys.stderr.write(f"Failed to setup file logging: {e}\n")
@@ -74,8 +81,13 @@ def setup_logger(name: str, log_filename: str) -> logging.Logger:
     return logger
 
 
+def get_logger(name: str, log_filename: str | None = None) -> logging.Logger:
+    safe_name = name.replace(".", "_").replace("-", "_")
+    return setup_logger(name, log_filename or f"{safe_name}.log")
+
+
 def force_flush():
-    """Manually flushes all handlers for the shared logger."""
+    """Flush handlers for all project loggers."""
     log = logging.getLogger("NeoWsPipeline")
     for h in log.handlers:
         h.flush()
@@ -108,11 +120,14 @@ def update_log_file(run_id: str):
         log_path = os.path.join(run_log_dir, "producer.log")
 
         fh = logging.FileHandler(log_path, encoding="utf-8")
-        fh.setFormatter(
-            logging.Formatter("%(asctime)s [%(levelname)s] [%(name)s] %(message)s")
-        )
+        fh.setLevel(_log_level())
+        fh.setFormatter(_file_formatter())
         log.addHandler(fh)
 
-        log.info(f"📁 Logging switched to: {log_path}")
+        log.info(f"Logging switched to: {log_path}")
     except Exception as e:
         log.error(f"Failed to switch log file: {e}")
+
+
+for noisy_logger_name in ("httpx", "httpcore", "urllib3", "kafka", "py4j"):
+    logging.getLogger(noisy_logger_name).setLevel(logging.WARNING)
