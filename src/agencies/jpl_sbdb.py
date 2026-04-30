@@ -31,7 +31,6 @@ class SBDBClient(BaseClient):
         data = await self._get("/sbdb.api", params={
             "sstr": designation,
             "phys-par": "1",
-            "ca-data": "1",
             "discovery": "1",
             "vi-data": "1",
             "alt-des": "1",
@@ -45,7 +44,6 @@ class SBDBClient(BaseClient):
         data, status = await self._get_with_status("/sbdb.api", params={
             "sstr": designation,
             "phys-par": "1",
-            "ca-data": "1",
             "discovery": "1",
             "vi-data": "1",
             "alt-des": "1",

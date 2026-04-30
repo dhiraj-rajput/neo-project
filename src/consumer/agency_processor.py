@@ -13,6 +13,7 @@ import hashlib
 import os
 
 import psycopg2
+import psycopg2.extras
 from contextlib import contextmanager
 from kafka import KafkaConsumer
 
@@ -159,11 +160,12 @@ def upsert_cad(cur, asteroid_id: str, records: list[dict]):
     updates = ",".join(f"{c}=EXCLUDED.{c}" for c in CAD_COLUMNS if c not in ("asteroid_id", "approach_date"))
     sql = f"""
         INSERT INTO neo_agency_cad ({','.join(CAD_COLUMNS)})
-        VALUES ({placeholders})
+        VALUES %s
         ON CONFLICT (asteroid_id, approach_date) DO UPDATE SET {updates}
     """
-    for rec in records:
-        cur.execute(sql, [rec.get(c) for c in CAD_COLUMNS])
+    template = f"({placeholders})"
+    values = [tuple(rec.get(c) for c in CAD_COLUMNS) for rec in records]
+    psycopg2.extras.execute_values(cur, sql, values, template=template)
 
 
 # ──────────────────────────────────────────────────────────────
@@ -218,11 +220,12 @@ def upsert_fireballs(cur, records: list[dict]):
     updates = ",".join(f"{c}=EXCLUDED.{c}" for c in FIREBALL_COLUMNS if c != "event_date")
     sql = f"""
         INSERT INTO neo_fireball_events ({','.join(FIREBALL_COLUMNS)})
-        VALUES ({placeholders})
+        VALUES %s
         ON CONFLICT (event_date) DO UPDATE SET {updates}
     """
-    for rec in records:
-        cur.execute(sql, [rec.get(c) for c in FIREBALL_COLUMNS])
+    template = f"({placeholders})"
+    values = [tuple(rec.get(c) for c in FIREBALL_COLUMNS) for rec in records]
+    psycopg2.extras.execute_values(cur, sql, values, template=template)
 
 
 # ──────────────────────────────────────────────────────────────

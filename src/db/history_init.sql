@@ -80,6 +80,8 @@ CREATE TABLE IF NOT EXISTS neo_agency_sbdb_history (
     archived_at TIMESTAMPTZ DEFAULT now(),
     change_type TEXT
 );
+CREATE INDEX IF NOT EXISTS idx_sbdb_hist_asteroid ON neo_agency_sbdb_history (asteroid_id);
+CREATE INDEX IF NOT EXISTS idx_sbdb_hist_archived ON neo_agency_sbdb_history (archived_at);
 
 
 -- C. JPL Sentry History — 26 columns from live API
@@ -104,6 +106,8 @@ CREATE TABLE IF NOT EXISTS neo_agency_sentry_history (
     archived_at TIMESTAMPTZ DEFAULT now(),
     change_type TEXT
 );
+CREATE INDEX IF NOT EXISTS idx_sentry_hist_asteroid ON neo_agency_sentry_history (asteroid_id);
+CREATE INDEX IF NOT EXISTS idx_sentry_hist_archived ON neo_agency_sentry_history (archived_at);
 
 
 -- D. ESA NEOCC History — 14 columns from pipe-delimited file
@@ -121,6 +125,8 @@ CREATE TABLE IF NOT EXISTS neo_agency_esa_history (
     archived_at TIMESTAMPTZ DEFAULT now(),
     change_type TEXT
 );
+CREATE INDEX IF NOT EXISTS idx_esa_hist_asteroid ON neo_agency_esa_history (asteroid_id);
+CREATE INDEX IF NOT EXISTS idx_esa_hist_archived ON neo_agency_esa_history (archived_at);
 
 
 -- E. JPL CAD History — 16 columns (NO JSONB)
@@ -141,6 +147,8 @@ CREATE TABLE IF NOT EXISTS neo_agency_cad_history (
     archived_at TIMESTAMPTZ DEFAULT now(),
     change_type TEXT
 );
+CREATE INDEX IF NOT EXISTS idx_cad_hist_asteroid ON neo_agency_cad_history (asteroid_id);
+CREATE INDEX IF NOT EXISTS idx_cad_hist_archived ON neo_agency_cad_history (archived_at);
 
 
 -- F. Fireball Events History — 9 columns (NO JSONB)
@@ -157,3 +165,5 @@ CREATE TABLE IF NOT EXISTS neo_fireball_events_history (
     archived_at TIMESTAMPTZ DEFAULT now(),
     change_type TEXT
 );
+CREATE INDEX IF NOT EXISTS idx_fireball_hist_date ON neo_fireball_events_history (event_date);
+CREATE INDEX IF NOT EXISTS idx_fireball_hist_archived ON neo_fireball_events_history (archived_at);
