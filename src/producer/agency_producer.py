@@ -22,6 +22,7 @@ from datetime import datetime, timezone
 
 import httpx
 import psycopg2
+from contextlib import contextmanager
 from kafka import KafkaProducer
 
 from src.config import Config
@@ -34,9 +35,9 @@ from src.agencies import (
 # ── Constants ────────────────────────────────────────────────
 
 AGENCY_TOPIC = os.getenv("AGENCY_TOPIC", "agency_ingest")
-BATCH_SIZE = 50
+BATCH_SIZE = 500
 CYCLE_SLEEP = 300
-MAX_CONCURRENT = 10
+MAX_CONCURRENT = 50
 
 _shutdown = False
 
@@ -79,21 +80,28 @@ def extract_designation_candidates(asteroid_id: str, name: str | None = None) ->
 
 # ── Database Helpers ─────────────────────────────────────────
 
-def get_db_connection():
-    return psycopg2.connect(
+@contextmanager
+def _db():
+    """Context-managed DB connection — prevents leaks on exception paths."""
+    conn = psycopg2.connect(
         host=Config.DB_HOST, port=Config.DB_PORT,
         database=Config.DB_NAME, user=Config.DB_USER, password=Config.DB_PASSWORD,
     )
+    try:
+        yield conn
+    finally:
+        conn.close()
 
 
 def load_asteroids_to_profile(limit: int = BATCH_SIZE) -> list[dict]:
     """Load asteroids needing agency profiling (never-profiled or stale)."""
-    conn = get_db_connection()
-    try:
+    with _db() as conn:
         with conn.cursor() as cur:
             cur.execute("""
-                SELECT DISTINCT n.asteroid_id, n.name
-                FROM neo_close_approaches n
+                SELECT n.asteroid_id, n.name
+                FROM (
+                    SELECT DISTINCT asteroid_id, name FROM neo_close_approaches
+                ) n
                 LEFT JOIN neo_agency_sbdb s ON s.asteroid_id = n.asteroid_id
                 WHERE s.asteroid_id IS NULL
                    OR s.ingestion_time < now() - INTERVAL '7 days'
@@ -101,14 +109,11 @@ def load_asteroids_to_profile(limit: int = BATCH_SIZE) -> list[dict]:
                 LIMIT %s
             """, (limit,))
             return [{"asteroid_id": r[0], "name": r[1]} for r in cur.fetchall()]
-    finally:
-        conn.close()
 
 
 def should_skip_source(asteroid_id: str, source: str) -> bool:
     """Check if a source returned 404 recently."""
-    conn = get_db_connection()
-    try:
+    with _db() as conn:
         with conn.cursor() as cur:
             cur.execute("""
                 SELECT not_found_until FROM neo_agency_fetch_status
@@ -116,36 +121,32 @@ def should_skip_source(asteroid_id: str, source: str) -> bool:
             """, (asteroid_id, source))
             row = cur.fetchone()
             return bool(row and row[0] and row[0] > datetime.now(timezone.utc))
-    finally:
-        conn.close()
 
 
 def save_fetch_status(asteroid_id: str, status):
     """Persist fetch status for 404-hold tracking."""
-    conn = get_db_connection()
-    try:
-        with conn.cursor() as cur:
-            cur.execute("""
-                INSERT INTO neo_agency_fetch_status
-                    (asteroid_id, source, status_code, last_failure_type,
-                     last_checked_at, not_found_until, lookup_value)
-                VALUES (%s, %s, %s, %s, now(), %s, %s)
-                ON CONFLICT (asteroid_id, source) DO UPDATE SET
-                    status_code = EXCLUDED.status_code,
-                    last_failure_type = EXCLUDED.last_failure_type,
-                    last_checked_at = now(),
-                    not_found_until = EXCLUDED.not_found_until,
-                    lookup_value = EXCLUDED.lookup_value
-            """, (
-                asteroid_id, status.source, status.status_code,
-                status.failure_type, status.not_found_until, status.lookup_value,
-            ))
-            conn.commit()
-    except Exception as e:
-        logger.warning(f"Failed to save fetch status: {e}")
-        conn.rollback()
-    finally:
-        conn.close()
+    with _db() as conn:
+        try:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO neo_agency_fetch_status
+                        (asteroid_id, source, status_code, last_failure_type,
+                         last_checked_at, not_found_until, lookup_value)
+                    VALUES (%s, %s, %s, %s, now(), %s, %s)
+                    ON CONFLICT (asteroid_id, source) DO UPDATE SET
+                        status_code = EXCLUDED.status_code,
+                        last_failure_type = EXCLUDED.last_failure_type,
+                        last_checked_at = now(),
+                        not_found_until = EXCLUDED.not_found_until,
+                        lookup_value = EXCLUDED.lookup_value
+                """, (
+                    asteroid_id, status.source, status.status_code,
+                    status.failure_type, status.not_found_until, status.lookup_value,
+                ))
+                conn.commit()
+        except Exception as e:
+            logger.warning(f"Failed to save fetch status: {e}")
+            conn.rollback()
 
 
 # ── Profile Builder ──────────────────────────────────────────
@@ -269,7 +270,7 @@ async def run_ingestion_cycle():
 
     async with httpx.AsyncClient(
         timeout=httpx.Timeout(30.0, connect=10.0),
-        limits=httpx.Limits(max_connections=20, max_keepalive_connections=10),
+        limits=httpx.Limits(max_connections=100, max_keepalive_connections=50),
         follow_redirects=True,
         headers={"User-Agent": "NEO-Orbital-Tracker/3.0 (Research)"},
     ) as http_client:

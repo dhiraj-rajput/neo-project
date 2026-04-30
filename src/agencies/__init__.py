@@ -11,8 +11,6 @@ from src.agencies.jpl_sentry import SentryClient
 from src.agencies.jpl_cad import CADClient
 from src.agencies.jpl_fireball import FireballClient
 from src.agencies.esa_neocc import ESAClient
-from src.agencies.mpc_orbits import MPCOrbitsClient
-from src.agencies.mpc_identifier import MPCIdentifierClient
 
 __all__ = [
     "BaseClient",
@@ -21,6 +19,4 @@ __all__ = [
     "CADClient",
     "FireballClient",
     "ESAClient",
-    "MPCOrbitsClient",
-    "MPCIdentifierClient",
 ]

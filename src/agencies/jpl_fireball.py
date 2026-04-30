@@ -7,8 +7,10 @@ Verified live: date, energy, impact-e, lat, lat-dir, lon, lon-dir, alt, vel.
 API docs: https://ssd-api.jpl.nasa.gov/doc/fireball.html
 """
 
-from src.agencies.base import BaseClient
+from src.agencies.base import BaseClient, safe_float
 from src.logger import logger
+
+_float = safe_float
 
 
 class FireballClient(BaseClient):
@@ -63,11 +65,3 @@ class FireballClient(BaseClient):
         logger.info(f"Fireball: fetched {len(results)} events")
         return results
 
-
-def _float(val) -> float | None:
-    if val is None:
-        return None
-    try:
-        return float(val)
-    except (ValueError, TypeError):
-        return None

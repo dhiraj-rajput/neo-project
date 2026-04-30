@@ -5,7 +5,7 @@ WORKDIR /app
 
 # Install Java 17 (LTS) + dependencies for Spark
 RUN apt-get update && \
-    apt-get install -y openjdk-17-jdk procps curl && \
+    apt-get install -y openjdk-17-jre-headless procps curl && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* && \
     ln -s /usr/lib/jvm/java-17-openjdk-* /usr/lib/jvm/default-java

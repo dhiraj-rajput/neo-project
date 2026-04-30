@@ -4,7 +4,7 @@ import requests
 import threading
 import sys
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from kafka import KafkaProducer
 from kafka.errors import KafkaError
@@ -47,19 +47,19 @@ def is_window_on_not_found_hold(start, end, windows=None):
     if not hold:
         return False
     try:
-        return datetime.fromisoformat(hold["not_found_until"]) > datetime.now()
+        return datetime.fromisoformat(hold["not_found_until"]) > datetime.now(timezone.utc)
     except Exception:
         return False
 
 
 def mark_window_not_found(start, end):
     windows = load_not_found_windows()
-    hold_until = datetime.now() + timedelta(days=NEOWS_NOT_FOUND_HOLD_DAYS)
+    hold_until = datetime.now(timezone.utc) + timedelta(days=NEOWS_NOT_FOUND_HOLD_DAYS)
     windows[f"{start}:{end}"] = {
         "window_start": start,
         "window_end": end,
         "last_status_code": 404,
-        "last_checked_at": datetime.now().isoformat(),
+        "last_checked_at": datetime.now(timezone.utc).isoformat(),
         "not_found_until": hold_until.isoformat(),
     }
     save_not_found_windows(windows)
@@ -73,7 +73,7 @@ class CheckpointManager:
     def __init__(self, run_id):
         self.run_id = run_id
         self.windows = {}  # key = window_start, value = dict
-        self.run_start_time = datetime.now()
+        self.run_start_time = datetime.now(timezone.utc)
         
         # Paths
         self.run_dir = Config.PRODUCER_CHECKPOINT_DIR
@@ -164,10 +164,10 @@ class CheckpointManager:
             payload = {
                 "run_id": self.run_id,
                 "run_started_at": self.run_start_time.isoformat(),
-                "run_finished_at": datetime.now().isoformat() if final else None,
+                "run_finished_at": datetime.now(timezone.utc).isoformat() if final else None,
                 "overall_range": {
                     "start_date": ordered_windows[0]["window_start"] if ordered_windows else Config.START_DATE,
-                    "end_date": ordered_windows[-1]["window_end"] if ordered_windows else datetime.now().strftime("%Y-%m-%d")
+                    "end_date": ordered_windows[-1]["window_end"] if ordered_windows else datetime.now(timezone.utc).strftime("%Y-%m-%d")
                 },
                 "termination_reason": termination_reason,
                 "stats": stats,
@@ -395,12 +395,12 @@ def run_cycle(target_run_id=None):
     if target_run_id:
         run_id = target_run_id
     else:
-        run_id = f"run_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        run_id = f"run_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}"
     
     Config.RUN_ID = run_id
     update_log_file(run_id)
     
-    logger.info(f"Starting ingestion run at {datetime.now()} (id: {run_id})")
+    logger.info(f"Starting ingestion run at {datetime.now(timezone.utc)} (id: {run_id})")
     PipelineStatus.update("RUNNING", run_id=run_id)
 
     # High reliability + High Throughput Producer
@@ -425,8 +425,8 @@ def run_cycle(target_run_id=None):
     session.mount('https://', adapter)
 
     try:
-        start = datetime.strptime(Config.START_DATE, "%Y-%m-%d")
-        end = datetime.now()
+        start = datetime.strptime(Config.START_DATE, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+        end = datetime.now(timezone.utc)
 
         # 2. Generate Windows (First-class objects)
         windows = []
@@ -438,6 +438,7 @@ def run_cycle(target_run_id=None):
                 "window_end": window_end.strftime("%Y-%m-%d")
             })
             curr = window_end + timedelta(days=1)
+
 
         # 3. Determine work (Tasks)
         tasks = []
@@ -576,7 +577,7 @@ def run_delta_cycle():
     Used for near-real-time updates between full scans.
     NASA updates close-approach data continuously, so we poll frequently.
     """
-    run_id = f"delta_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    run_id = f"delta_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}"
     Config.RUN_ID = run_id
     update_log_file(run_id)
 
@@ -602,8 +603,8 @@ def run_delta_cycle():
     total_sent = 0
     try:
         # Fetch today - 1 day through today + 14 days (covers upcoming approaches)
-        start = datetime.now() - timedelta(days=1)
-        end = datetime.now() + timedelta(days=14)
+        start = datetime.now(timezone.utc) - timedelta(days=1)
+        end = datetime.now(timezone.utc) + timedelta(days=14)
 
         curr = start
         while curr <= end:

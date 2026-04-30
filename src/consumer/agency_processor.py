@@ -22,7 +22,7 @@ from src.logger import logger
 
 
 AGENCY_TOPIC = os.getenv("AGENCY_TOPIC", "agency_ingest")
-CONSUMER_GROUP = "agency-processor-v4"
+CONSUMER_GROUP = "agency-processor"
 
 
 @contextmanager
@@ -43,8 +43,12 @@ def db_connection():
 
 
 def compute_hash(record: dict) -> str:
-    """Deterministic MD5 hash of all values for CDC."""
-    raw = "||".join(str(v) for v in sorted(record.items()))
+    """Deterministic MD5 hash of all values for CDC.
+    Excludes meta-fields so retries produce identical hashes."""
+    exclude = {"row_hash", "ingestion_time"}
+    raw = "||".join(str(v) for v in sorted(
+        (k, v) for k, v in record.items() if k not in exclude
+    ))
     return hashlib.md5(raw.encode()).hexdigest()
 
 
@@ -271,7 +275,7 @@ def process_message(msg_bytes: bytes):
 
         conn.commit()
 
-    logger.debug(f"Processed agency data for {asteroid_id}")
+    logger.info(f"Processed agency data for {asteroid_id}")
 
 
 def main():

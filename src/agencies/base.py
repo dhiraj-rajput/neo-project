@@ -81,25 +81,40 @@ class BaseClient:
         """POST → JSON with retries + structured status."""
         return await self._fetch_json("POST", path, json_body=json_body, max_retries=max_retries)
 
-    async def _get_text(self, path: str, params: dict | None = None) -> str | None:
-        """GET → raw text response."""
+    async def _get_text(self, path: str, params: dict | None = None,
+                        max_retries: int = 3) -> str | None:
+        """GET → raw text response with retries (matches _fetch_json resilience)."""
         client = await self._ensure_client()
         url = f"{self.base_url}{path}" if path.startswith("/") else path
-        try:
-            if self._semaphore:
-                async with self._semaphore:
-                    resp = await client.get(url, params=params, timeout=15.0)
-                    await asyncio.sleep(self.rate_limit)
-            else:
-                resp = await client.get(url, params=params, timeout=15.0)
-                await asyncio.sleep(self.rate_limit)
 
-            if resp.status_code == 200:
-                return resp.text
-            return None
-        except Exception as e:
-            logger.warning(f"[{self.name}] Text fetch error: {e}")
-            return None
+        for attempt in range(max_retries):
+            try:
+                if self._semaphore:
+                    async with self._semaphore:
+                        resp = await client.get(url, params=params)
+                        await asyncio.sleep(self.rate_limit)
+                else:
+                    resp = await client.get(url, params=params)
+                    await asyncio.sleep(self.rate_limit)
+
+                if resp.status_code == 200:
+                    return resp.text
+                if resp.status_code in (404, 400):
+                    return None
+                # 5xx — retry
+                if attempt == max_retries - 1:
+                    logger.warning(f"[{self.name}] Text fetch failed after {max_retries} retries: HTTP {resp.status_code}")
+                    return None
+            except Exception as e:
+                if attempt == max_retries - 1:
+                    logger.warning(f"[{self.name}] Text fetch error after {max_retries} retries: {e}")
+                    return None
+
+            wait = (attempt + 1) * 2
+            logger.debug(f"[{self.name}] Text retry {attempt + 1}/{max_retries} in {wait}s")
+            await asyncio.sleep(wait)
+
+        return None
 
     async def _fetch_json(self, method: str, path: str, *,
                           params: dict | None = None,
@@ -196,3 +211,26 @@ class BaseClient:
 
 # Keep backward compatibility
 AgencyClient = BaseClient
+
+
+# ── Shared parsing helpers ─────────────────────────────────
+# Used by all agency clients; avoids duplicating across modules.
+
+def safe_float(val) -> float | None:
+    """Parse a value to float, returning None on failure."""
+    if val is None:
+        return None
+    try:
+        return float(val)
+    except (ValueError, TypeError):
+        return None
+
+
+def safe_int(val) -> int | None:
+    """Parse a value to int, returning None on failure."""
+    if val is None:
+        return None
+    try:
+        return int(val)
+    except (ValueError, TypeError):
+        return None

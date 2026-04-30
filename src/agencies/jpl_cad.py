@@ -7,8 +7,11 @@ Verified against live API hit on 99942 (81 records returned).
 API docs: https://ssd-api.jpl.nasa.gov/doc/cad.html
 """
 
-from src.agencies.base import BaseClient
+from datetime import datetime
+from src.agencies.base import BaseClient, safe_float
 from src.logger import logger
+
+_float = safe_float
 
 
 class CADClient(BaseClient):
@@ -78,7 +81,6 @@ class CADClient(BaseClient):
         if not cd:
             return None
         try:
-            from datetime import datetime
             dt = datetime.strptime(cd.split(" ")[0], "%Y-%b-%d")
             return dt.strftime("%Y-%m-%d")
         except (ValueError, IndexError):
@@ -88,11 +90,3 @@ class CADClient(BaseClient):
             except Exception:
                 return None
 
-
-def _float(val) -> float | None:
-    if val is None:
-        return None
-    try:
-        return float(val)
-    except (ValueError, TypeError):
-        return None
