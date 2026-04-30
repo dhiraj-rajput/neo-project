@@ -47,6 +47,9 @@ class FireballClient(BaseClient):
 
             results.append({
                 "event_date": event_date,
+                # NOTE: API 'energy' field is in units of 10^10 Joules (not raw J).
+                # Stored as-is; Grafana labels should show "Energy (10^10 J)".
+                # See: https://ssd-api.jpl.nasa.gov/doc/fireball.html
                 "total_radiated_energy_j": _float(entry.get("energy")),
                 "impact_energy_kt": _float(entry.get("impact-e")),
                 "latitude": _float(entry.get("lat")),

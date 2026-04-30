@@ -325,7 +325,7 @@ CREATE INDEX IF NOT EXISTS idx_cad_future   ON neo_agency_cad (approach_date) WH
 CREATE TABLE IF NOT EXISTS neo_fireball_events (
     event_date TIMESTAMPTZ NOT NULL,       -- date
 
-    total_radiated_energy_j DOUBLE PRECISION,  -- energy (converted from TJ)
+    total_radiated_energy_j DOUBLE PRECISION,  -- energy (units: 10^10 Joules per API docs)
     impact_energy_kt DOUBLE PRECISION,         -- impact-e (kt)
     latitude DOUBLE PRECISION,                 -- lat
     latitude_dir TEXT,                         -- lat-dir ('N' or 'S')
@@ -482,7 +482,8 @@ FROM (
 ) n
 LEFT JOIN neo_agency_sbdb    s   ON s.asteroid_id   = n.asteroid_id
 LEFT JOIN neo_agency_sentry  sen ON sen.asteroid_id = n.asteroid_id
-LEFT JOIN neo_agency_esa     esa ON esa.asteroid_id = n.asteroid_id;
+LEFT JOIN neo_agency_esa     esa ON esa.asteroid_id = n.asteroid_id
+    OR LOWER(esa.esa_designation) = LOWER(s.designation);
 
 -- Active Sentry watchlist for dashboard
 CREATE OR REPLACE VIEW neo_sentry_watchlist AS
@@ -526,7 +527,9 @@ SELECT
     esa.on_risk_list AS esa_risk
 FROM neo_agency_cad c
 LEFT JOIN neo_agency_sentry sen ON sen.asteroid_id = c.asteroid_id
+LEFT JOIN neo_agency_sbdb   s   ON s.asteroid_id   = c.asteroid_id
 LEFT JOIN neo_agency_esa esa    ON esa.asteroid_id = c.asteroid_id
+    OR LOWER(esa.esa_designation) = LOWER(s.designation)
 WHERE c.approach_date >= CURRENT_DATE
 ORDER BY c.approach_date ASC;
 
