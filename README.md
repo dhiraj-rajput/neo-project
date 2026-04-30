@@ -1,6 +1,6 @@
 # Multi-Agency Asteroid Research Platform
 
-A Docker-based research platform for collecting, processing, storing, and visualizing Near-Earth Object data from NASA/JPL, ESA, and MPC sources.
+A Docker-based research platform for collecting, processing, storing, and visualizing Near-Earth Object data from NASA/JPL and ESA sources.
 
 The project has five main pieces:
 
@@ -157,7 +157,6 @@ The project uses these external sources:
 - JPL CAD for close approach history.
 - JPL Sentry for impact risk objects.
 - ESA NEOCC risk list.
-- MPC orbit/designation data.
 
 ## SBDB Missing Data Behavior
 
@@ -167,7 +166,6 @@ If SBDB returns `404`, the agency producer does not stop. It continues checking 
 
 - JPL Sentry
 - JPL CAD
-- MPC
 - ESA NEOCC
 
 The producer also tries multiple identifiers for each asteroid before giving up on a source:
@@ -179,7 +177,7 @@ The producer also tries multiple identifiers for each asteroid before giving up 
 
 Confirmed `404` results are stored in `neo_agency_fetch_status`. The same missing source is held for `AGENCY_NOT_FOUND_HOLD_DAYS` days so the system does not repeatedly call an API for a record known to be absent.
 
-This means partial profiles are expected and useful. A missing SBDB row can still have Sentry, CAD, MPC, or ESA data.
+This means partial profiles are expected and useful. A missing SBDB row can still have Sentry, CAD, or ESA data.
 
 ## Important Environment Settings
 
@@ -226,7 +224,7 @@ docker exec -it timescaledb psql -U neo_user -d neo_db -c "SELECT COUNT(*) FROM 
 Count agency records:
 
 ```powershell
-docker exec -it timescaledb psql -U neo_user -d neo_db -c "SELECT 'sbdb' AS source, COUNT(*) FROM neo_agency_sbdb UNION ALL SELECT 'sentry', COUNT(*) FROM neo_agency_sentry UNION ALL SELECT 'cad', COUNT(*) FROM neo_agency_cad UNION ALL SELECT 'mpc', COUNT(*) FROM neo_agency_mpc UNION ALL SELECT 'esa', COUNT(*) FROM neo_agency_esa;"
+docker exec -it timescaledb psql -U neo_user -d neo_db -c "SELECT 'sbdb' AS source, COUNT(*) FROM neo_agency_sbdb UNION ALL SELECT 'sentry', COUNT(*) FROM neo_agency_sentry UNION ALL SELECT 'cad', COUNT(*) FROM neo_agency_cad UNION ALL SELECT 'esa', COUNT(*) FROM neo_agency_esa;"
 ```
 
 Check confirmed missing external records:

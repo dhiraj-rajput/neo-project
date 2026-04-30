@@ -1,118 +1,2090 @@
 {
-  "annotations": { "list": [] },
+  "annotations": {
+    "list": []
+  },
   "editable": true,
   "graphTooltip": 1,
   "id": null,
   "links": [],
   "panels": [
-
-    { "collapsed": false, "gridPos": {"h":1,"w":24,"x":0,"y":0}, "id":200, "title":"📊 Pipeline Overview", "type":"row" },
-
-    { "datasource":{"type":"postgres","uid":"TimescaleDB"}, "fieldConfig":{"defaults":{"color":{"mode":"thresholds"},"thresholds":{"mode":"absolute","steps":[{"color":"blue","value":null}]},"unit":"short"}}, "gridPos":{"h":4,"w":4,"x":0,"y":1}, "id":101, "options":{"colorMode":"background","graphMode":"area","reduceOptions":{"calcs":["lastNotNull"]}}, "targets":[{"datasource":{"type":"postgres","uid":"TimescaleDB"},"format":"table","rawSql":"SELECT COUNT(DISTINCT asteroid_id) AS \"Total NEOs\" FROM neo_close_approaches WHERE close_approach_date BETWEEN $__timeFrom() AND $__timeTo()","refId":"A"}], "title":"Total NEOs (NeoWs)", "type":"stat" },
-
-    { "datasource":{"type":"postgres","uid":"TimescaleDB"}, "fieldConfig":{"defaults":{"color":{"mode":"thresholds"},"thresholds":{"mode":"absolute","steps":[{"color":"green","value":null},{"color":"orange","value":1},{"color":"red","value":10}]},"unit":"short"}}, "gridPos":{"h":4,"w":4,"x":4,"y":1}, "id":102, "options":{"colorMode":"background","graphMode":"area","reduceOptions":{"calcs":["lastNotNull"]}}, "targets":[{"datasource":{"type":"postgres","uid":"TimescaleDB"},"format":"table","rawSql":"SELECT COUNT(*) AS \"Hazardous\" FROM neo_close_approaches WHERE is_potentially_hazardous = TRUE AND close_approach_date BETWEEN $__timeFrom() AND $__timeTo()","refId":"A"}], "title":"Potentially Hazardous", "type":"stat" },
-
-    { "datasource":{"type":"postgres","uid":"TimescaleDB"}, "fieldConfig":{"defaults":{"color":{"mode":"thresholds"},"thresholds":{"mode":"absolute","steps":[{"color":"green","value":null},{"color":"yellow","value":1},{"color":"red","value":5}]},"unit":"short"}}, "gridPos":{"h":4,"w":4,"x":8,"y":1}, "id":103, "options":{"colorMode":"background","graphMode":"none","reduceOptions":{"calcs":["lastNotNull"]}}, "targets":[{"datasource":{"type":"postgres","uid":"TimescaleDB"},"format":"table","rawSql":"SELECT COUNT(*) AS \"On Sentry\" FROM neo_agency_sentry WHERE status = 'active'","refId":"A"}], "title":"Active Sentry Objects", "type":"stat" },
-
-    { "datasource":{"type":"postgres","uid":"TimescaleDB"}, "fieldConfig":{"defaults":{"color":{"mode":"thresholds"},"thresholds":{"mode":"absolute","steps":[{"color":"blue","value":null}]},"unit":"short"}}, "gridPos":{"h":4,"w":4,"x":12,"y":1}, "id":104, "options":{"colorMode":"value","graphMode":"area","reduceOptions":{"calcs":["lastNotNull"]}}, "targets":[{"datasource":{"type":"postgres","uid":"TimescaleDB"},"format":"table","rawSql":"SELECT COUNT(*) AS \"CAD Records\" FROM neo_agency_cad","refId":"A"}], "title":"CAD Close-Approach Records", "type":"stat" },
-
-    { "datasource":{"type":"postgres","uid":"TimescaleDB"}, "fieldConfig":{"defaults":{"color":{"mode":"thresholds"},"thresholds":{"mode":"absolute","steps":[{"color":"orange","value":null}]},"unit":"short"}}, "gridPos":{"h":4,"w":4,"x":16,"y":1}, "id":105, "options":{"colorMode":"background","graphMode":"area","reduceOptions":{"calcs":["lastNotNull"]}}, "targets":[{"datasource":{"type":"postgres","uid":"TimescaleDB"},"format":"table","rawSql":"SELECT COUNT(*) AS \"Fireballs\" FROM neo_fireball_events","refId":"A"}], "title":"Fireball Events (Total)", "type":"stat" },
-
-    { "datasource":{"type":"postgres","uid":"TimescaleDB"}, "fieldConfig":{"defaults":{"color":{"mode":"thresholds"},"thresholds":{"mode":"absolute","steps":[{"color":"red","value":null}]},"unit":"short"}}, "gridPos":{"h":4,"w":4,"x":20,"y":1}, "id":106, "options":{"colorMode":"background","graphMode":"none","reduceOptions":{"calcs":["lastNotNull"]}}, "targets":[{"datasource":{"type":"postgres","uid":"TimescaleDB"},"format":"table","rawSql":"SELECT COUNT(*) AS \"ESA Risk\" FROM neo_agency_esa WHERE on_risk_list = TRUE","refId":"A"}], "title":"ESA Risk List Objects", "type":"stat" },
-
-    { "collapsed": false, "gridPos": {"h":1,"w":24,"x":0,"y":5}, "id":201, "title":"🌍 NeoWs — Daily Close Approaches", "type":"row" },
-
-    { "datasource":{"type":"postgres","uid":"TimescaleDB"}, "fieldConfig":{"defaults":{"color":{"mode":"palette-classic"},"custom":{"fillOpacity":10,"lineWidth":2}}}, "gridPos":{"h":8,"w":12,"x":0,"y":6}, "id":1, "options":{"legend":{"calcs":["mean","max"],"displayMode":"list","placement":"bottom","showLegend":true},"tooltip":{"mode":"multi"}}, "targets":[{"datasource":{"type":"postgres","uid":"TimescaleDB"},"format":"time_series","rawSql":"SELECT metric_date AS \"time\", asteroid_count AS \"Asteroid Count\" FROM neo_daily_metrics WHERE metric_date BETWEEN $__timeFrom() AND $__timeTo() ORDER BY metric_date","refId":"A"},{"datasource":{"type":"postgres","uid":"TimescaleDB"},"format":"time_series","rawSql":"SELECT metric_date AS \"time\", AVG(asteroid_count) OVER (ORDER BY metric_date ROWS BETWEEN 6 PRECEDING AND CURRENT ROW) AS \"7-Day Moving Avg\" FROM neo_daily_metrics WHERE metric_date BETWEEN $__timeFrom() AND $__timeTo() ORDER BY metric_date","refId":"B"}], "title":"Asteroid Count Over Time", "type":"timeseries" },
-
-    { "datasource":{"type":"postgres","uid":"TimescaleDB"}, "fieldConfig":{"defaults":{"color":{"mode":"palette-classic"},"custom":{"fillOpacity":10,"lineWidth":2}}}, "gridPos":{"h":8,"w":12,"x":12,"y":6}, "id":2, "options":{"legend":{"calcs":["mean","max"],"displayMode":"list","placement":"bottom","showLegend":true},"tooltip":{"mode":"multi"}}, "targets":[{"datasource":{"type":"postgres","uid":"TimescaleDB"},"format":"time_series","rawSql":"SELECT metric_date AS \"time\", avg_risk_score AS \"Avg Risk Score\", high_risk_count AS \"High Risk Count\" FROM neo_daily_metrics WHERE metric_date BETWEEN $__timeFrom() AND $__timeTo() ORDER BY metric_date","refId":"A"}], "title":"Risk Metrics Over Time", "type":"timeseries" },
-
-    { "collapsed": false, "gridPos": {"h":1,"w":24,"x":0,"y":14}, "id":202, "title":"☄️ JPL Sentry — Impact Risk Watchlist", "type":"row" },
-
-    { "datasource":{"type":"postgres","uid":"TimescaleDB"}, "fieldConfig":{"defaults":{"color":{"mode":"thresholds"},"thresholds":{"mode":"absolute","steps":[{"color":"green","value":null},{"color":"yellow","value":-4},{"color":"orange","value":-2},{"color":"red","value":0}]},"custom":{"displayMode":"color-background"}},"overrides":[{"matcher":{"id":"byName","options":"Palermo (Cum)"},"properties":[{"id":"unit","value":"none"}]},{"matcher":{"id":"byName","options":"Impact Prob"},"properties":[{"id":"unit","value":"percentunit"},{"id":"custom.width","value":100}]}]}, "gridPos":{"h":10,"w":24,"x":0,"y":15}, "id":10, "options":{"sortBy":[{"displayName":"Palermo (Cum)","desc":true}],"footer":{"show":false}}, "targets":[{"datasource":{"type":"postgres","uid":"TimescaleDB"},"format":"table","rawSql":"SELECT fullname AS \"Object\", impact_probability AS \"Impact Prob\", torino_scale AS \"Torino\", palermo_scale_cum AS \"Palermo (Cum)\", palermo_scale_max AS \"Palermo (Max)\", n_impacts AS \"# Impacts\", impact_date_range AS \"Impact Years\", energy_mt AS \"Energy (MT)\", diameter_km AS \"Diameter (km)\", v_impact_km_s AS \"V Impact (km/s)\", last_obs AS \"Last Obs\", cdate AS \"Updated\" FROM neo_sentry_watchlist LIMIT 50","refId":"A"}], "title":"Active Sentry Watchlist (Top 50 by Palermo Scale)", "type":"table" },
-
-    { "datasource":{"type":"postgres","uid":"TimescaleDB"}, "fieldConfig":{"defaults":{"color":{"mode":"palette-classic"},"custom":{"fillOpacity":10,"lineWidth":1}}}, "gridPos":{"h":8,"w":12,"x":0,"y":25}, "id":11, "options":{"legend":{"displayMode":"list","placement":"bottom","showLegend":true}}, "targets":[{"datasource":{"type":"postgres","uid":"TimescaleDB"},"format":"table","rawSql":"SELECT WIDTH_BUCKET(palermo_scale_cum, -10, 0, 20) AS bucket, ROUND(((WIDTH_BUCKET(palermo_scale_cum, -10, 0, 20) - 1) * 0.5 - 10)::numeric, 1) AS palermo_scale, COUNT(*) AS count FROM neo_agency_sentry WHERE status='active' AND palermo_scale_cum IS NOT NULL GROUP BY bucket ORDER BY bucket","refId":"A"}], "title":"Palermo Scale Distribution", "type":"barchart" },
-
-    { "datasource":{"type":"postgres","uid":"TimescaleDB"}, "fieldConfig":{"defaults":{"color":{"mode":"palette-classic"},"custom":{"hideFrom":{"legend":false,"tooltip":false,"viz":false}}}}, "gridPos":{"h":8,"w":12,"x":12,"y":25}, "id":12, "options":{"displayLabels":["percent"],"legend":{"calcs":[],"displayMode":"table","placement":"right","showLegend":true,"values":["value"]},"pieType":"pie"}, "targets":[{"datasource":{"type":"postgres","uid":"TimescaleDB"},"format":"table","rawSql":"SELECT CASE WHEN torino_scale = 0 THEN '0 - Normal' WHEN torino_scale = 1 THEN '1 - Normal (merits monitoring)' WHEN torino_scale BETWEEN 2 AND 4 THEN '2-4 - Meriting attention' WHEN torino_scale BETWEEN 5 AND 7 THEN '5-7 - Threatening' WHEN torino_scale BETWEEN 8 AND 10 THEN '8-10 - Certain Collision' ELSE 'Unknown' END AS category, COUNT(*) AS count FROM neo_agency_sentry WHERE status='active' GROUP BY category ORDER BY category","refId":"A"}], "title":"Torino Scale Distribution", "type":"piechart" },
-
-    { "collapsed": false, "gridPos": {"h":1,"w":24,"x":0,"y":33}, "id":203, "title":"🔭 JPL CAD — Close Approaches", "type":"row" },
-
-    { "datasource":{"type":"postgres","uid":"TimescaleDB"}, "fieldConfig":{"defaults":{"custom":{"displayMode":"auto"}},"overrides":[{"matcher":{"id":"byName","options":"On Sentry?"},"properties":[{"id":"custom.displayMode","value":"color-background"},{"id":"mappings","value":[{"options":{"false":{"color":"green","index":0,"text":"No"},"true":{"color":"red","index":1,"text":"YES ⚠"}},"type":"value"}]}]},{"matcher":{"id":"byName","options":"Distance (AU)"},"properties":[{"id":"unit","value":"none"},{"id":"decimals","value":4}]}]}, "gridPos":{"h":10,"w":24,"x":0,"y":34}, "id":20, "options":{"sortBy":[{"displayName":"Date","desc":false}]}, "targets":[{"datasource":{"type":"postgres","uid":"TimescaleDB"},"format":"table","rawSql":"SELECT approach_date AS \"Date\", fullname AS \"Object\", ROUND(distance_au::numeric,5) AS \"Distance (AU)\", ROUND(v_rel_km_s::numeric,2) AS \"V Rel (km/s)\", ROUND(diameter_km::numeric,3) AS \"Diameter (km)\", h_mag AS \"H Mag\", t_sigma_f AS \"σt\", on_sentry_watchlist AS \"On Sentry?\", palermo_scale_cum AS \"Palermo\", esa_risk AS \"ESA Risk\" FROM neo_cad_upcoming LIMIT 100","refId":"A"}], "title":"Upcoming Close Approaches (CAD) — Next 100", "type":"table" },
-
-    { "datasource":{"type":"postgres","uid":"TimescaleDB"}, "fieldConfig":{"defaults":{"color":{"mode":"palette-classic"},"custom":{"fillOpacity":10,"lineWidth":2}}}, "gridPos":{"h":8,"w":24,"x":0,"y":44}, "id":21, "options":{"legend":{"displayMode":"list","placement":"bottom","showLegend":true},"tooltip":{"mode":"multi"}}, "targets":[{"datasource":{"type":"postgres","uid":"TimescaleDB"},"format":"time_series","rawSql":"SELECT approach_date AS \"time\", distance_au AS \"Distance (AU)\" FROM neo_agency_cad WHERE approach_date BETWEEN $__timeFrom() AND $__timeTo() AND distance_au < 0.05 ORDER BY approach_date","refId":"A"}], "title":"Very Close Approaches (< 0.05 AU)", "type":"timeseries" },
-
-    { "collapsed": false, "gridPos": {"h":1,"w":24,"x":0,"y":52}, "id":204, "title":"🔥 JPL Fireball Events", "type":"row" },
-
-    { "datasource":{"type":"postgres","uid":"TimescaleDB"}, "fieldConfig":{"defaults":{"color":{"mode":"palette-classic"},"custom":{"fillOpacity":20,"lineWidth":2}}}, "gridPos":{"h":8,"w":12,"x":0,"y":53}, "id":30, "options":{"legend":{"displayMode":"list","placement":"bottom","showLegend":true}}, "targets":[{"datasource":{"type":"postgres","uid":"TimescaleDB"},"format":"time_series","rawSql":"SELECT event_date AS \"time\", impact_energy_kt AS \"Impact Energy (kt TNT)\" FROM neo_fireball_events WHERE event_date BETWEEN $__timeFrom() AND $__timeTo() ORDER BY event_date","refId":"A"}], "title":"Fireball Impact Energy Over Time (kt TNT)", "type":"timeseries" },
-
-    { "datasource":{"type":"postgres","uid":"TimescaleDB"}, "fieldConfig":{"defaults":{"custom":{"displayMode":"auto"}}}, "gridPos":{"h":8,"w":12,"x":12,"y":53}, "id":31, "options":{"sortBy":[{"displayName":"Energy (kt)","desc":true}]}, "targets":[{"datasource":{"type":"postgres","uid":"TimescaleDB"},"format":"table","rawSql":"SELECT event_date AS \"Date\", CONCAT(latitude, latitude_dir) AS \"Lat\", CONCAT(longitude, longitude_dir) AS \"Lon\", altitude_km AS \"Alt (km)\", velocity_km_s AS \"Vel (km/s)\", total_radiated_energy_j AS \"Radiated (10^10 J)\", impact_energy_kt AS \"Energy (kt)\" FROM neo_fireball_events ORDER BY impact_energy_kt DESC NULLS LAST LIMIT 20","refId":"A"}], "title":"Top 20 Fireball Events by Energy", "type":"table" },
-
-    { "datasource":{"type":"postgres","uid":"TimescaleDB"}, "fieldConfig":{"defaults":{"color":{"mode":"palette-classic"},"custom":{"fillOpacity":10,"lineWidth":1}}}, "gridPos":{"h":7,"w":12,"x":0,"y":61}, "id":32, "options":{"legend":{"displayMode":"list","placement":"bottom","showLegend":true}}, "targets":[{"datasource":{"type":"postgres","uid":"TimescaleDB"},"format":"table","rawSql":"SELECT year, event_count AS \"Events\", ROUND(total_energy_kt::numeric,1) AS \"Total Energy (kt)\", ROUND(max_energy_kt::numeric,1) AS \"Max Energy (kt)\" FROM neo_fireball_annual ORDER BY year DESC LIMIT 30","refId":"A"}], "title":"Fireball Annual Summary", "type":"table" },
-
-    { "collapsed": false, "gridPos": {"h":1,"w":24,"x":0,"y":68}, "id":205, "title":"🪐 JPL SBDB — Orbital & Physical Properties", "type":"row" },
-
-    { "datasource":{"type":"postgres","uid":"TimescaleDB"}, "fieldConfig":{"defaults":{"color":{"mode":"palette-classic"},"custom":{"hideFrom":{"legend":false,"tooltip":false,"viz":false}}}}, "gridPos":{"h":8,"w":8,"x":0,"y":69}, "id":40, "options":{"displayLabels":["name","percent"],"legend":{"calcs":[],"displayMode":"table","placement":"right","showLegend":true,"values":["value"]},"pieType":"donut"}, "targets":[{"datasource":{"type":"postgres","uid":"TimescaleDB"},"format":"table","rawSql":"SELECT orbit_class_name AS \"Orbit Class\", total AS \"Count\" FROM neo_orbit_class_dist LIMIT 10","refId":"A"}], "title":"Orbit Class Distribution", "type":"piechart" },
-
-    { "datasource":{"type":"postgres","uid":"TimescaleDB"}, "fieldConfig":{"defaults":{"color":{"mode":"palette-classic"},"custom":{"fillOpacity":60,"lineWidth":1}}}, "gridPos":{"h":8,"w":8,"x":8,"y":69}, "id":41, "options":{"legend":{"displayMode":"list","placement":"bottom","showLegend":true}}, "targets":[{"datasource":{"type":"postgres","uid":"TimescaleDB"},"format":"table","rawSql":"SELECT WIDTH_BUCKET(moid_au, 0, 0.1, 20) AS bucket, ROUND((WIDTH_BUCKET(moid_au,0,0.1,20)-1)*0.005::numeric,3) AS moid_au, COUNT(*) AS count FROM neo_agency_sbdb WHERE moid_au IS NOT NULL AND moid_au < 0.1 GROUP BY bucket ORDER BY bucket","refId":"A"}], "title":"MOID Distribution (AU)", "type":"barchart" },
-
-    { "datasource":{"type":"postgres","uid":"TimescaleDB"}, "fieldConfig":{"defaults":{"color":{"mode":"palette-classic"},"custom":{"fillOpacity":60,"lineWidth":1}}}, "gridPos":{"h":8,"w":8,"x":16,"y":69}, "id":42, "options":{"legend":{"displayMode":"list","placement":"bottom","showLegend":true}}, "targets":[{"datasource":{"type":"postgres","uid":"TimescaleDB"},"format":"table","rawSql":"SELECT WIDTH_BUCKET(diameter_km, 0, 10, 20) AS bucket, ROUND((WIDTH_BUCKET(diameter_km,0,10,20)-1)*0.5::numeric,1) AS diameter_km, COUNT(*) AS count FROM neo_agency_sbdb WHERE diameter_km IS NOT NULL AND diameter_km < 10 GROUP BY bucket ORDER BY bucket","refId":"A"}], "title":"Diameter Distribution (km)", "type":"barchart" },
-
-    { "datasource":{"type":"postgres","uid":"TimescaleDB"}, "fieldConfig":{"defaults":{"custom":{"displayMode":"auto"}}}, "gridPos":{"h":9,"w":24,"x":0,"y":77}, "id":43, "options":{"sortBy":[{"displayName":"Diameter (km)","desc":true}]}, "targets":[{"datasource":{"type":"postgres","uid":"TimescaleDB"},"format":"table","rawSql":"SELECT asteroid_id, sbdb_fullname AS \"Name\", orbit_class_name AS \"Orbit Class\", ROUND(sbdb_diameter_km::numeric,3) AS \"Diameter (km)\", ROUND(albedo::numeric,3) AS \"Albedo\", spectral_type AS \"Spec Type\", ROUND(moid_au::numeric,5) AS \"MOID (AU)\", ROUND(eccentricity::numeric,4) AS \"e\", ROUND(inclination_deg::numeric,2) AS \"i (deg)\", ROUND(semi_major_axis_au::numeric,4) AS \"a (AU)\", is_pha AS \"PHA?\", sentry_status AS \"Sentry\", esa_on_risk_list AS \"ESA Risk\" FROM neo_asteroid_profile WHERE sbdb_diameter_km IS NOT NULL ORDER BY sbdb_diameter_km DESC NULLS LAST LIMIT 50","refId":"A"}], "title":"Largest Known NEOs (SBDB)", "type":"table" },
-
-    { "collapsed": false, "gridPos": {"h":1,"w":24,"x":0,"y":86}, "id":206, "title":"🌍 ESA NEOCC — Risk List", "type":"row" },
-
-    { "datasource":{"type":"postgres","uid":"TimescaleDB"}, "fieldConfig":{"defaults":{"custom":{"displayMode":"auto"}},"overrides":[{"matcher":{"id":"byName","options":"PS Max"},"properties":[{"id":"custom.displayMode","value":"color-background"},{"id":"thresholds","value":{"mode":"absolute","steps":[{"color":"green","value":null},{"color":"yellow","value":-4},{"color":"orange","value":-2},{"color":"red","value":0}]}}]}]}, "gridPos":{"h":10,"w":24,"x":0,"y":87}, "id":50, "options":{"sortBy":[{"displayName":"PS Max","desc":true}]}, "targets":[{"datasource":{"type":"postgres","uid":"TimescaleDB"},"format":"table","rawSql":"SELECT esa_designation AS \"Designation\", esa_name AS \"Name\", ROUND(diameter_m::numeric,0) AS \"Diameter (m)\", vi_date AS \"VI Date\", ip_max AS \"IP Max\", ps_max AS \"PS Max\", ts AS \"TS\", ROUND(vel_km_s::numeric,2) AS \"Vel (km/s)\", years AS \"Impact Years\", ip_cum AS \"IP Cum\", ps_cum AS \"PS Cum\" FROM neo_agency_esa WHERE on_risk_list = TRUE ORDER BY ps_max DESC NULLS LAST LIMIT 50","refId":"A"}], "title":"ESA NEOCC Risk List (Top 50)", "type":"table" },
-
-    { "collapsed": false, "gridPos": {"h":1,"w":24,"x":0,"y":97}, "id":207, "title":"⚙️ Pipeline Health", "type":"row" },
-
-    { "datasource":{"type":"postgres","uid":"TimescaleDB"}, "fieldConfig":{"defaults":{"color":{"mode":"palette-classic"},"custom":{"fillOpacity":10,"lineWidth":2}}}, "gridPos":{"h":7,"w":12,"x":0,"y":98}, "id":60, "options":{"legend":{"displayMode":"list","placement":"bottom","showLegend":true}}, "targets":[{"datasource":{"type":"postgres","uid":"TimescaleDB"},"format":"time_series","rawSql":"SELECT ingestion_time AS \"time\", COUNT(*) AS \"Records Ingested\" FROM neo_agency_sbdb WHERE ingestion_time BETWEEN $__timeFrom() AND $__timeTo() GROUP BY date_trunc('hour', ingestion_time) ORDER BY 1","refId":"A"}], "title":"SBDB Ingestion Rate (per hour)", "type":"timeseries" },
-
-    { "datasource":{"type":"postgres","uid":"TimescaleDB"}, "fieldConfig":{"defaults":{"custom":{"displayMode":"auto"}}}, "gridPos":{"h":7,"w":12,"x":12,"y":98}, "id":61, "options":{"sortBy":[{"displayName":"Last Checked","desc":true}]}, "targets":[{"datasource":{"type":"postgres","uid":"TimescaleDB"},"format":"table","rawSql":"SELECT source AS \"Source\", COUNT(*) AS \"Total\", COUNT(*) FILTER (WHERE status_code = 404) AS \"404 Count\", COUNT(*) FILTER (WHERE not_found_until > now()) AS \"Cached Not-Found\", MAX(last_checked_at) AS \"Last Checked\" FROM neo_agency_fetch_status GROUP BY source ORDER BY source","refId":"A"}], "title":"Fetch Status by Source", "type":"table" },
-
-    { "collapsed": false, "gridPos": {"h":1,"w":24,"x":0,"y":105}, "id":300, "title":"🔬 Cross-Agency Concordance Analysis", "type":"row" },
-
-    { "datasource":{"type":"postgres","uid":"TimescaleDB"}, "fieldConfig":{"defaults":{"custom":{"displayMode":"auto"},"color":{"mode":"thresholds"},"thresholds":{"mode":"absolute","steps":[{"color":"green","value":null},{"color":"yellow","value":0.5},{"color":"orange","value":1},{"color":"red","value":2}]}},"overrides":[{"matcher":{"id":"byName","options":"Δ Palermo"},"properties":[{"id":"custom.displayMode","value":"color-background"}]}]}, "gridPos":{"h":10,"w":24,"x":0,"y":106}, "id":301, "options":{"sortBy":[{"displayName":"JPL Palermo","desc":true}]}, "targets":[{"datasource":{"type":"postgres","uid":"TimescaleDB"},"format":"table","rawSql":"SELECT s.designation AS \"Object\", s.palermo_scale_cum AS \"JPL Palermo\", e.ps_cum AS \"ESA Palermo\", ROUND((s.palermo_scale_cum - e.ps_cum)::numeric, 2) AS \"Δ Palermo\", s.torino_scale AS \"JPL TS\", e.ts AS \"ESA TS\", ROUND(s.diameter_km::numeric, 3) AS \"JPL Diam (km)\", ROUND(e.diameter_m / 1000.0, 3) AS \"ESA Diam (km)\", s.impact_date_range AS \"Impact Years\" FROM neo_agency_sentry s JOIN neo_agency_esa e ON LOWER(e.esa_designation) = LOWER(s.designation) WHERE s.status = 'active' AND e.on_risk_list = TRUE ORDER BY s.palermo_scale_cum DESC NULLS LAST LIMIT 50","refId":"A"}], "title":"JPL Sentry vs ESA NEOCC — Risk Agreement", "type":"table" },
-
-    { "datasource":{"type":"postgres","uid":"TimescaleDB"}, "fieldConfig":{"defaults":{"color":{"mode":"palette-classic"},"custom":{"fillOpacity":60,"lineWidth":1}}}, "gridPos":{"h":8,"w":12,"x":0,"y":116}, "id":302, "options":{"legend":{"displayMode":"list","placement":"bottom","showLegend":true}}, "targets":[{"datasource":{"type":"postgres","uid":"TimescaleDB"},"format":"table","rawSql":"SELECT 'NeoWs' AS source, COUNT(DISTINCT asteroid_id) AS count FROM neo_close_approaches UNION ALL SELECT 'SBDB', COUNT(*) FROM neo_agency_sbdb UNION ALL SELECT 'Sentry (Active)', COUNT(*) FROM neo_agency_sentry WHERE status='active' UNION ALL SELECT 'CAD', COUNT(DISTINCT asteroid_id) FROM neo_agency_cad UNION ALL SELECT 'ESA Risk', COUNT(*) FROM neo_agency_esa WHERE on_risk_list = TRUE UNION ALL SELECT 'Fireball', COUNT(*) FROM neo_fireball_events ORDER BY count DESC","refId":"A"}], "title":"Agency Data Coverage (Record Counts)", "type":"barchart" },
-
-    { "datasource":{"type":"postgres","uid":"TimescaleDB"}, "fieldConfig":{"defaults":{"color":{"mode":"palette-classic"},"custom":{"hideFrom":{"legend":false,"tooltip":false,"viz":false}}}}, "gridPos":{"h":8,"w":12,"x":12,"y":116}, "id":303, "options":{"displayLabels":["name","percent"],"legend":{"calcs":[],"displayMode":"table","placement":"right","showLegend":true,"values":["value"]},"pieType":"donut"}, "targets":[{"datasource":{"type":"postgres","uid":"TimescaleDB"},"format":"table","rawSql":"SELECT CASE WHEN cnt >= 3 THEN '3+ agencies' WHEN cnt = 2 THEN '2 agencies' ELSE '1 agency only' END AS coverage, COUNT(*) AS count FROM (SELECT n.asteroid_id, (CASE WHEN s.asteroid_id IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN sen.asteroid_id IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN e.asteroid_id IS NOT NULL THEN 1 ELSE 0 END) AS cnt FROM (SELECT DISTINCT asteroid_id FROM neo_close_approaches) n LEFT JOIN neo_agency_sbdb s ON s.asteroid_id = n.asteroid_id LEFT JOIN neo_agency_sentry sen ON sen.asteroid_id = n.asteroid_id LEFT JOIN neo_agency_esa e ON e.asteroid_id = n.asteroid_id) sub GROUP BY 1 ORDER BY 1 DESC","refId":"A"}], "title":"Multi-Agency Coverage per Object", "type":"piechart" },
-
-    { "datasource":{"type":"postgres","uid":"TimescaleDB"}, "fieldConfig":{"defaults":{"custom":{"displayMode":"auto"}}}, "gridPos":{"h":9,"w":24,"x":0,"y":124}, "id":304, "options":{"sortBy":[{"displayName":"Δ Diam (km)","desc":true}]}, "targets":[{"datasource":{"type":"postgres","uid":"TimescaleDB"},"format":"table","rawSql":"SELECT s.fullname AS \"Object\", ROUND(s.diameter_km::numeric, 3) AS \"SBDB Measured (km)\", ROUND(n.diam_max::numeric, 3) AS \"NeoWs Estimated (km)\", ROUND(ABS(s.diameter_km - n.diam_max)::numeric, 3) AS \"Δ Diam (km)\", s.orbit_class_name AS \"Orbit Class\", s.albedo AS \"Albedo\" FROM neo_agency_sbdb s JOIN (SELECT DISTINCT ON (asteroid_id) asteroid_id, estimated_diameter_km_max AS diam_max FROM neo_close_approaches ORDER BY asteroid_id, close_approach_date DESC) n ON n.asteroid_id = s.asteroid_id WHERE s.diameter_km IS NOT NULL AND n.diam_max IS NOT NULL ORDER BY ABS(s.diameter_km - n.diam_max) DESC LIMIT 50","refId":"A"}], "title":"Diameter Discrepancy — SBDB (Measured) vs NeoWs (Estimated)", "type":"table" },
-
-    { "collapsed": false, "gridPos": {"h":1,"w":24,"x":0,"y":133}, "id":310, "title":"🪐 Orbital Dynamics Deep Dive", "type":"row" },
-
-    { "datasource":{"type":"postgres","uid":"TimescaleDB"}, "fieldConfig":{"defaults":{"color":{"mode":"palette-classic"},"custom":{"axisCenteredZero":false,"showPoints":"always","pointSize":5}}}, "gridPos":{"h":9,"w":12,"x":0,"y":134}, "id":311, "options":{"legend":{"displayMode":"list","placement":"bottom","showLegend":true},"tooltip":{"mode":"single"}}, "targets":[{"datasource":{"type":"postgres","uid":"TimescaleDB"},"format":"table","rawSql":"SELECT semi_major_axis_au AS \"a (AU)\", eccentricity AS \"e\", CASE WHEN is_pha THEN 'PHA' ELSE 'Non-PHA' END AS \"series\", fullname AS \"Object\" FROM neo_agency_sbdb WHERE semi_major_axis_au IS NOT NULL AND eccentricity IS NOT NULL AND semi_major_axis_au < 5","refId":"A"}], "title":"Semi-Major Axis vs Eccentricity (a-e Diagram)", "type":"xychart" },
-
-    { "datasource":{"type":"postgres","uid":"TimescaleDB"}, "fieldConfig":{"defaults":{"color":{"mode":"palette-classic"},"custom":{"fillOpacity":60,"lineWidth":1}}}, "gridPos":{"h":9,"w":12,"x":12,"y":134}, "id":312, "options":{"legend":{"displayMode":"list","placement":"bottom","showLegend":true}}, "targets":[{"datasource":{"type":"postgres","uid":"TimescaleDB"},"format":"table","rawSql":"SELECT ROUND(t_jup::numeric, 1) AS t_jup, COUNT(*) AS count FROM neo_agency_sbdb WHERE t_jup IS NOT NULL AND t_jup BETWEEN 2 AND 7 GROUP BY 1 ORDER BY 1","refId":"A"}], "title":"Tisserand Parameter Distribution (T_J)", "type":"barchart" },
-
-    { "datasource":{"type":"postgres","uid":"TimescaleDB"}, "fieldConfig":{"defaults":{"custom":{"displayMode":"auto"}}}, "gridPos":{"h":8,"w":24,"x":0,"y":143}, "id":313, "options":{"sortBy":[{"displayName":"Count","desc":true}]}, "targets":[{"datasource":{"type":"postgres","uid":"TimescaleDB"},"format":"table","rawSql":"SELECT orbit_class_name AS \"Class\", total AS \"Count\", pha_count AS \"PHA Count\", ROUND(avg_moid_au::numeric, 5) AS \"Avg MOID (AU)\", ROUND(avg_eccentricity::numeric, 4) AS \"Avg e\", ROUND(avg_diameter_km::numeric, 3) AS \"Avg Diam (km)\", ROUND(avg_t_jup::numeric, 2) AS \"Avg T_J\" FROM neo_orbit_class_dist","refId":"A"}], "title":"Orbit Class Risk Profile", "type":"table" },
-
-    { "collapsed": false, "gridPos": {"h":1,"w":24,"x":0,"y":151}, "id":320, "title":"⚡ Velocity & Miss Distance Analysis", "type":"row" },
-
-    { "datasource":{"type":"postgres","uid":"TimescaleDB"}, "fieldConfig":{"defaults":{"color":{"mode":"palette-classic"},"custom":{"fillOpacity":10,"lineWidth":2}}}, "gridPos":{"h":8,"w":12,"x":0,"y":152}, "id":321, "options":{"legend":{"calcs":["mean","min"],"displayMode":"list","placement":"bottom","showLegend":true},"tooltip":{"mode":"multi"}}, "targets":[{"datasource":{"type":"postgres","uid":"TimescaleDB"},"format":"time_series","rawSql":"SELECT time_bucket('1 month', close_approach_date) AS \"time\", COUNT(*) AS \"Approaches\", COUNT(*) FILTER (WHERE is_potentially_hazardous) AS \"Hazardous\", MIN(miss_distance_astronomical::float) AS \"Closest (AU)\" FROM neo_close_approaches WHERE close_approach_date BETWEEN $__timeFrom() AND $__timeTo() GROUP BY 1 ORDER BY 1","refId":"A"}], "title":"Monthly Approach Density", "type":"timeseries" },
-
-    { "datasource":{"type":"postgres","uid":"TimescaleDB"}, "fieldConfig":{"defaults":{"color":{"mode":"palette-classic"},"custom":{"fillOpacity":10,"lineWidth":2}}}, "gridPos":{"h":8,"w":12,"x":12,"y":152}, "id":322, "options":{"legend":{"calcs":["min"],"displayMode":"list","placement":"bottom","showLegend":true},"tooltip":{"mode":"multi"}}, "targets":[{"datasource":{"type":"postgres","uid":"TimescaleDB"},"format":"time_series","rawSql":"SELECT time_bucket('3 months', approach_date) AS \"time\", MIN(distance_au) AS \"Closest (AU)\", COUNT(*) AS \"Count\" FROM neo_agency_cad WHERE approach_date BETWEEN $__timeFrom() AND $__timeTo() GROUP BY 1 ORDER BY 1","refId":"A"}], "title":"CAD Approach Distance Trend (3-month buckets)", "type":"timeseries" },
-
-    { "collapsed": false, "gridPos": {"h":1,"w":24,"x":0,"y":160}, "id":330, "title":"🔥 Fireball Geospatial & Energy", "type":"row" },
-
-    { "datasource":{"type":"postgres","uid":"TimescaleDB"}, "fieldConfig":{"defaults":{"color":{"mode":"palette-classic"},"custom":{"axisCenteredZero":false,"showPoints":"always","pointSize":8}}}, "gridPos":{"h":9,"w":12,"x":0,"y":161}, "id":331, "options":{"legend":{"displayMode":"list","placement":"bottom","showLegend":true}}, "targets":[{"datasource":{"type":"postgres","uid":"TimescaleDB"},"format":"table","rawSql":"SELECT velocity_km_s AS \"Velocity (km/s)\", impact_energy_kt AS \"Energy (kt)\", event_date::text AS \"Date\" FROM neo_fireball_events WHERE velocity_km_s IS NOT NULL AND impact_energy_kt IS NOT NULL","refId":"A"}], "title":"Fireball Energy vs Entry Velocity", "type":"xychart" },
-
-    { "datasource":{"type":"postgres","uid":"TimescaleDB"}, "fieldConfig":{"defaults":{"custom":{"displayMode":"auto"}}}, "gridPos":{"h":9,"w":12,"x":12,"y":161}, "id":332, "options":{"sortBy":[{"displayName":"Date","desc":true}]}, "targets":[{"datasource":{"type":"postgres","uid":"TimescaleDB"},"format":"table","rawSql":"SELECT event_date AS \"Date\", CONCAT(latitude, '° ', latitude_dir) AS \"Lat\", CONCAT(longitude, '° ', longitude_dir) AS \"Lon\", altitude_km AS \"Alt (km)\", velocity_km_s AS \"Vel (km/s)\", total_radiated_energy_j AS \"Energy (10^10 J)\", ROUND(impact_energy_kt::numeric, 3) AS \"Impact (kt)\" FROM neo_fireball_events ORDER BY event_date DESC LIMIT 50","refId":"A"}], "title":"Recent Fireball Events — Coordinates & Energy", "type":"table" },
-
-    { "collapsed": false, "gridPos": {"h":1,"w":24,"x":0,"y":170}, "id":340, "title":"📈 Discovery & Data Freshness", "type":"row" },
-
-    { "datasource":{"type":"postgres","uid":"TimescaleDB"}, "fieldConfig":{"defaults":{"color":{"mode":"thresholds"},"thresholds":{"mode":"absolute","steps":[{"color":"green","value":null},{"color":"yellow","value":24},{"color":"orange","value":72},{"color":"red","value":168}]},"unit":"h"}}, "gridPos":{"h":5,"w":24,"x":0,"y":171}, "id":341, "options":{"colorMode":"background","graphMode":"none","reduceOptions":{"calcs":["lastNotNull"]},"orientation":"horizontal"}, "targets":[{"datasource":{"type":"postgres","uid":"TimescaleDB"},"format":"table","rawSql":"SELECT 'NeoWs' AS \"metric\", ROUND(EXTRACT(EPOCH FROM now()-MAX(ingestion_time))/3600, 1) AS \"Hours Stale\" FROM neo_close_approaches UNION ALL SELECT 'SBDB', ROUND(EXTRACT(EPOCH FROM now()-MAX(ingestion_time))/3600, 1) FROM neo_agency_sbdb UNION ALL SELECT 'Sentry', ROUND(EXTRACT(EPOCH FROM now()-MAX(ingestion_time))/3600, 1) FROM neo_agency_sentry UNION ALL SELECT 'CAD', ROUND(EXTRACT(EPOCH FROM now()-MAX(ingestion_time))/3600, 1) FROM neo_agency_cad UNION ALL SELECT 'ESA', ROUND(EXTRACT(EPOCH FROM now()-MAX(ingestion_time))/3600, 1) FROM neo_agency_esa","refId":"A"}], "title":"Data Freshness (Hours Since Last Ingestion)", "type":"stat" },
-
-    { "datasource":{"type":"postgres","uid":"TimescaleDB"}, "fieldConfig":{"defaults":{"color":{"mode":"palette-classic"},"custom":{"fillOpacity":10,"lineWidth":2}}}, "gridPos":{"h":8,"w":24,"x":0,"y":176}, "id":342, "options":{"legend":{"displayMode":"list","placement":"bottom","showLegend":true},"tooltip":{"mode":"multi"}}, "targets":[{"datasource":{"type":"postgres","uid":"TimescaleDB"},"format":"time_series","rawSql":"SELECT time_bucket('1 day', ingestion_time) AS \"time\", 'SBDB' AS metric, COUNT(*) AS \"value\" FROM neo_agency_sbdb WHERE ingestion_time BETWEEN $__timeFrom() AND $__timeTo() GROUP BY 1 UNION ALL SELECT time_bucket('1 day', ingestion_time), 'CAD', COUNT(*) FROM neo_agency_cad WHERE ingestion_time BETWEEN $__timeFrom() AND $__timeTo() GROUP BY 1 UNION ALL SELECT time_bucket('1 day', ingestion_time), 'NeoWs', COUNT(*) FROM neo_close_approaches WHERE ingestion_time BETWEEN $__timeFrom() AND $__timeTo() GROUP BY 1 ORDER BY 1","refId":"A"}], "title":"Daily Ingestion Throughput by Source", "type":"timeseries" }
-
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 200,
+      "title": "Pipeline Overview",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "TimescaleDB"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short"
+        }
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 0,
+        "y": 1
+      },
+      "id": 101,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "TimescaleDB"
+          },
+          "format": "table",
+          "rawSql": "SELECT COUNT(DISTINCT asteroid_id) AS \"Total NEOs\" FROM neo_close_approaches WHERE close_approach_date BETWEEN $__timeFrom() AND $__timeTo()",
+          "refId": "A"
+        }
+      ],
+      "title": "Total NEOs (NeoWs)",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "TimescaleDB"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 10
+              }
+            ]
+          },
+          "unit": "short"
+        }
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 4,
+        "y": 1
+      },
+      "id": 102,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "TimescaleDB"
+          },
+          "format": "table",
+          "rawSql": "SELECT COUNT(*) AS \"Hazardous\" FROM neo_close_approaches WHERE is_potentially_hazardous = TRUE AND close_approach_date BETWEEN $__timeFrom() AND $__timeTo()",
+          "refId": "A"
+        }
+      ],
+      "title": "Potentially Hazardous",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "TimescaleDB"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 5
+              }
+            ]
+          },
+          "unit": "short"
+        }
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 8,
+        "y": 1
+      },
+      "id": 103,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "TimescaleDB"
+          },
+          "format": "table",
+          "rawSql": "SELECT COUNT(*) AS \"On Sentry\" FROM neo_agency_sentry WHERE status = 'active'",
+          "refId": "A"
+        }
+      ],
+      "title": "Active Sentry Objects",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "TimescaleDB"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short"
+        }
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 12,
+        "y": 1
+      },
+      "id": 104,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "TimescaleDB"
+          },
+          "format": "table",
+          "rawSql": "SELECT COUNT(*) AS \"CAD Records\" FROM neo_agency_cad",
+          "refId": "A"
+        }
+      ],
+      "title": "CAD Close-Approach Records",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "TimescaleDB"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "orange",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short"
+        }
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 16,
+        "y": 1
+      },
+      "id": 105,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "TimescaleDB"
+          },
+          "format": "table",
+          "rawSql": "SELECT COUNT(*) AS \"Fireballs\" FROM neo_fireball_events",
+          "refId": "A"
+        }
+      ],
+      "title": "Fireball Events (Total)",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "TimescaleDB"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short"
+        }
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 20,
+        "y": 1
+      },
+      "id": 106,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "TimescaleDB"
+          },
+          "format": "table",
+          "rawSql": "SELECT COUNT(*) AS \"ESA Risk\" FROM neo_agency_esa WHERE on_risk_list = TRUE",
+          "refId": "A"
+        }
+      ],
+      "title": "ESA Risk List Objects",
+      "type": "stat"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 5
+      },
+      "id": 201,
+      "title": "NeoWs \u2014 Daily Close Approaches",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "TimescaleDB"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "fillOpacity": 10,
+            "lineWidth": 2
+          }
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 6
+      },
+      "id": 1,
+      "options": {
+        "legend": {
+          "calcs": [
+            "mean",
+            "max"
+          ],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "TimescaleDB"
+          },
+          "format": "time_series",
+          "rawSql": "SELECT metric_date AS \"time\", asteroid_count AS \"Asteroid Count\" FROM neo_daily_metrics WHERE metric_date BETWEEN $__timeFrom() AND $__timeTo() ORDER BY metric_date",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "TimescaleDB"
+          },
+          "format": "time_series",
+          "rawSql": "SELECT metric_date AS \"time\", AVG(asteroid_count) OVER (ORDER BY metric_date ROWS BETWEEN 6 PRECEDING AND CURRENT ROW) AS \"7-Day Moving Avg\" FROM neo_daily_metrics WHERE metric_date BETWEEN $__timeFrom() AND $__timeTo() ORDER BY metric_date",
+          "refId": "B"
+        }
+      ],
+      "title": "Asteroid Count Over Time",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "TimescaleDB"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "fillOpacity": 10,
+            "lineWidth": 2
+          }
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 6
+      },
+      "id": 2,
+      "options": {
+        "legend": {
+          "calcs": [
+            "mean",
+            "max"
+          ],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "TimescaleDB"
+          },
+          "format": "time_series",
+          "rawSql": "SELECT metric_date AS \"time\", avg_risk_score AS \"Avg Risk Score\", high_risk_count AS \"High Risk Count\" FROM neo_daily_metrics WHERE metric_date BETWEEN $__timeFrom() AND $__timeTo() ORDER BY metric_date",
+          "refId": "A"
+        }
+      ],
+      "title": "Risk Metrics Over Time",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 14
+      },
+      "id": 202,
+      "title": "\u2604 JPL Sentry \u2014 Impact Risk Watchlist",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "TimescaleDB"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": -4
+              },
+              {
+                "color": "orange",
+                "value": -2
+              },
+              {
+                "color": "red",
+                "value": 0
+              }
+            ]
+          },
+          "custom": {
+            "displayMode": "color-background"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Palermo (Cum)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Impact Prob"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "custom.width",
+                "value": 100
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 15
+      },
+      "id": 10,
+      "options": {
+        "sortBy": [
+          {
+            "displayName": "Palermo (Cum)",
+            "desc": true
+          }
+        ],
+        "footer": {
+          "show": false
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "TimescaleDB"
+          },
+          "format": "table",
+          "rawSql": "SELECT fullname AS \"Object\", impact_probability AS \"Impact Prob\", torino_scale AS \"Torino\", palermo_scale_cum AS \"Palermo (Cum)\", palermo_scale_max AS \"Palermo (Max)\", n_impacts AS \"# Impacts\", impact_date_range AS \"Impact Years\", energy_mt AS \"Energy (MT)\", diameter_km AS \"Diameter (km)\", v_impact_km_s AS \"V Impact (km/s)\", last_obs AS \"Last Obs\", cdate AS \"Updated\" FROM neo_sentry_watchlist LIMIT 50",
+          "refId": "A"
+        }
+      ],
+      "title": "Active Sentry Watchlist (Top 50 by Palermo Scale)",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "TimescaleDB"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "fillOpacity": 10,
+            "lineWidth": 1
+          }
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 25
+      },
+      "id": 11,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "TimescaleDB"
+          },
+          "format": "table",
+          "rawSql": "SELECT WIDTH_BUCKET(palermo_scale_cum, -10, 0, 20) AS bucket, ROUND(((WIDTH_BUCKET(palermo_scale_cum, -10, 0, 20) - 1) * 0.5 - 10)::numeric, 1) ::text AS palermo_scale, COUNT(*) AS count FROM neo_agency_sentry WHERE status='active' AND palermo_scale_cum IS NOT NULL GROUP BY bucket ORDER BY bucket",
+          "refId": "A"
+        }
+      ],
+      "title": "Palermo Scale Distribution",
+      "type": "barchart"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "TimescaleDB"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            }
+          }
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 25
+      },
+      "id": 12,
+      "options": {
+        "displayLabels": [
+          "percent"
+        ],
+        "legend": {
+          "calcs": [],
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true,
+          "values": [
+            "value"
+          ]
+        },
+        "pieType": "pie"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "TimescaleDB"
+          },
+          "format": "table",
+          "rawSql": "SELECT CASE WHEN torino_scale = 0 THEN '0 - Normal' WHEN torino_scale = 1 THEN '1 - Normal (merits monitoring)' WHEN torino_scale BETWEEN 2 AND 4 THEN '2-4 - Meriting attention' WHEN torino_scale BETWEEN 5 AND 7 THEN '5-7 - Threatening' WHEN torino_scale BETWEEN 8 AND 10 THEN '8-10 - Certain Collision' ELSE 'Unknown' END AS category, COUNT(*) AS count FROM neo_agency_sentry WHERE status='active' GROUP BY category ORDER BY category",
+          "refId": "A"
+        }
+      ],
+      "title": "Torino Scale Distribution",
+      "type": "piechart"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 33
+      },
+      "id": 203,
+      "title": "JPL CAD \u2014 Close Approaches",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "TimescaleDB"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "displayMode": "auto"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "On Sentry?"
+            },
+            "properties": [
+              {
+                "id": "custom.displayMode",
+                "value": "color-background"
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "options": {
+                      "false": {
+                        "color": "green",
+                        "index": 0,
+                        "text": "No"
+                      },
+                      "true": {
+                        "color": "red",
+                        "index": 1,
+                        "text": "YES"
+                      }
+                    },
+                    "type": "value"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Distance (AU)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              },
+              {
+                "id": "decimals",
+                "value": 4
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 34
+      },
+      "id": 20,
+      "options": {
+        "sortBy": [
+          {
+            "displayName": "Date",
+            "desc": false
+          }
+        ]
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "TimescaleDB"
+          },
+          "format": "table",
+          "rawSql": "SELECT approach_date AS \"Date\", fullname AS \"Object\", ROUND(distance_au::numeric,5) AS \"Distance (AU)\", ROUND(v_rel_km_s::numeric,2) AS \"V Rel (km/s)\", ROUND(diameter_km::numeric,3) AS \"Diameter (km)\", h_mag AS \"H Mag\", t_sigma_f AS \"\u03c3t\", on_sentry_watchlist AS \"On Sentry?\", palermo_scale_cum AS \"Palermo\", esa_risk AS \"ESA Risk\" FROM neo_cad_upcoming LIMIT 100",
+          "refId": "A"
+        }
+      ],
+      "title": "Upcoming Close Approaches (CAD) \u2014 Next 100",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "TimescaleDB"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "fillOpacity": 10,
+            "lineWidth": 2
+          }
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 44
+      },
+      "id": 21,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "TimescaleDB"
+          },
+          "format": "time_series",
+          "rawSql": "SELECT approach_date AS \"time\", distance_au AS \"Distance (AU)\" FROM neo_agency_cad WHERE approach_date BETWEEN $__timeFrom() AND $__timeTo() AND distance_au < 0.05 ORDER BY approach_date",
+          "refId": "A"
+        }
+      ],
+      "title": "Very Close Approaches (< 0.05 AU)",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 52
+      },
+      "id": 204,
+      "title": "JPL Fireball Events",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "TimescaleDB"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "fillOpacity": 20,
+            "lineWidth": 2
+          }
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 53
+      },
+      "id": 30,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "TimescaleDB"
+          },
+          "format": "time_series",
+          "rawSql": "SELECT event_date AS \"time\", impact_energy_kt AS \"Impact Energy (kt TNT)\" FROM neo_fireball_events WHERE event_date BETWEEN $__timeFrom() AND $__timeTo() ORDER BY event_date",
+          "refId": "A"
+        }
+      ],
+      "title": "Fireball Impact Energy Over Time (kt TNT)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "TimescaleDB"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "displayMode": "auto"
+          }
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 53
+      },
+      "id": 31,
+      "options": {
+        "sortBy": [
+          {
+            "displayName": "Energy (kt)",
+            "desc": true
+          }
+        ]
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "TimescaleDB"
+          },
+          "format": "table",
+          "rawSql": "SELECT event_date AS \"Date\", CONCAT(latitude, latitude_dir) AS \"Lat\", CONCAT(longitude, longitude_dir) AS \"Lon\", altitude_km AS \"Alt (km)\", velocity_km_s AS \"Vel (km/s)\", total_radiated_energy_j AS \"Radiated (10^10 J)\", impact_energy_kt AS \"Energy (kt)\" FROM neo_fireball_events ORDER BY impact_energy_kt DESC NULLS LAST LIMIT 20",
+          "refId": "A"
+        }
+      ],
+      "title": "Top 20 Fireball Events by Energy",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "TimescaleDB"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "fillOpacity": 10,
+            "lineWidth": 1
+          }
+        }
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 0,
+        "y": 61
+      },
+      "id": 32,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "TimescaleDB"
+          },
+          "format": "table",
+          "rawSql": "SELECT year, event_count AS \"Events\", ROUND(total_energy_kt::numeric,1) AS \"Total Energy (kt)\", ROUND(max_energy_kt::numeric,1) AS \"Max Energy (kt)\" FROM neo_fireball_annual ORDER BY year DESC LIMIT 30",
+          "refId": "A"
+        }
+      ],
+      "title": "Fireball Annual Summary",
+      "type": "table"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 68
+      },
+      "id": 205,
+      "title": "JPL SBDB \u2014 Orbital & Physical Properties",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "TimescaleDB"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            }
+          }
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 69
+      },
+      "id": 40,
+      "options": {
+        "displayLabels": [
+          "name",
+          "percent"
+        ],
+        "legend": {
+          "calcs": [],
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true,
+          "values": [
+            "value"
+          ]
+        },
+        "pieType": "donut"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "TimescaleDB"
+          },
+          "format": "table",
+          "rawSql": "SELECT orbit_class_name AS \"Orbit Class\", total AS \"Count\" FROM neo_orbit_class_dist LIMIT 10",
+          "refId": "A"
+        }
+      ],
+      "title": "Orbit Class Distribution",
+      "type": "piechart"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "TimescaleDB"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "fillOpacity": 60,
+            "lineWidth": 1
+          }
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 69
+      },
+      "id": 41,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "TimescaleDB"
+          },
+          "format": "table",
+          "rawSql": "SELECT WIDTH_BUCKET(moid_au, 0, 0.1, 20) AS bucket, ROUND((WIDTH_BUCKET(moid_au,0,0.1,20)-1)*0.005::numeric,3) ::text AS moid_au, COUNT(*) AS count FROM neo_agency_sbdb WHERE moid_au IS NOT NULL AND moid_au < 0.1 GROUP BY bucket ORDER BY bucket",
+          "refId": "A"
+        }
+      ],
+      "title": "MOID Distribution (AU)",
+      "type": "barchart"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "TimescaleDB"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "fillOpacity": 60,
+            "lineWidth": 1
+          }
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 69
+      },
+      "id": 42,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "TimescaleDB"
+          },
+          "format": "table",
+          "rawSql": "SELECT WIDTH_BUCKET(diameter_km, 0, 10, 20) AS bucket, ROUND((WIDTH_BUCKET(diameter_km,0,10,20)-1)*0.5::numeric,1) ::text AS diameter_km, COUNT(*) AS count FROM neo_agency_sbdb WHERE diameter_km IS NOT NULL AND diameter_km < 10 GROUP BY bucket ORDER BY bucket",
+          "refId": "A"
+        }
+      ],
+      "title": "Diameter Distribution (km)",
+      "type": "barchart"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "TimescaleDB"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "displayMode": "auto"
+          }
+        }
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 77
+      },
+      "id": 43,
+      "options": {
+        "sortBy": [
+          {
+            "displayName": "Diameter (km)",
+            "desc": true
+          }
+        ]
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "TimescaleDB"
+          },
+          "format": "table",
+          "rawSql": "SELECT asteroid_id, sbdb_fullname AS \"Name\", orbit_class_name AS \"Orbit Class\", ROUND(sbdb_diameter_km::numeric,3) AS \"Diameter (km)\", ROUND(albedo::numeric,3) AS \"Albedo\", spectral_type AS \"Spec Type\", ROUND(moid_au::numeric,5) AS \"MOID (AU)\", ROUND(eccentricity::numeric,4) AS \"e\", ROUND(inclination_deg::numeric,2) AS \"i (deg)\", ROUND(semi_major_axis_au::numeric,4) AS \"a (AU)\", is_pha AS \"PHA?\", sentry_status AS \"Sentry\", esa_on_risk_list AS \"ESA Risk\" FROM neo_asteroid_profile WHERE sbdb_diameter_km IS NOT NULL ORDER BY sbdb_diameter_km DESC NULLS LAST LIMIT 50",
+          "refId": "A"
+        }
+      ],
+      "title": "Largest Known NEOs (SBDB)",
+      "type": "table"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 86
+      },
+      "id": 206,
+      "title": "ESA NEOCC \u2014 Risk List",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "TimescaleDB"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "displayMode": "auto"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "PS Max"
+            },
+            "properties": [
+              {
+                "id": "custom.displayMode",
+                "value": "color-background"
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": -4
+                    },
+                    {
+                      "color": "orange",
+                      "value": -2
+                    },
+                    {
+                      "color": "red",
+                      "value": 0
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 87
+      },
+      "id": 50,
+      "options": {
+        "sortBy": [
+          {
+            "displayName": "PS Max",
+            "desc": true
+          }
+        ]
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "TimescaleDB"
+          },
+          "format": "table",
+          "rawSql": "SELECT esa_designation AS \"Designation\", esa_name AS \"Name\", ROUND(diameter_m::numeric,0) AS \"Diameter (m)\", vi_date AS \"VI Date\", ip_max AS \"IP Max\", ps_max AS \"PS Max\", ts AS \"TS\", ROUND(vel_km_s::numeric,2) AS \"Vel (km/s)\", years AS \"Impact Years\", ip_cum AS \"IP Cum\", ps_cum AS \"PS Cum\" FROM neo_agency_esa WHERE on_risk_list = TRUE ORDER BY ps_max DESC NULLS LAST LIMIT 50",
+          "refId": "A"
+        }
+      ],
+      "title": "ESA NEOCC Risk List (Top 50)",
+      "type": "table"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 97
+      },
+      "id": 207,
+      "title": "\u2699 Pipeline Health",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "TimescaleDB"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "fillOpacity": 10,
+            "lineWidth": 2
+          }
+        }
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 0,
+        "y": 98
+      },
+      "id": 60,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "TimescaleDB"
+          },
+          "format": "time_series",
+          "rawSql": "SELECT ingestion_time AS \"time\", COUNT(*) AS \"Records Ingested\" FROM neo_agency_sbdb WHERE ingestion_time BETWEEN $__timeFrom() AND $__timeTo() GROUP BY date_trunc('hour', ingestion_time) ORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "title": "SBDB Ingestion Rate (per hour)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "TimescaleDB"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "displayMode": "auto"
+          }
+        }
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 12,
+        "y": 98
+      },
+      "id": 61,
+      "options": {
+        "sortBy": [
+          {
+            "displayName": "Last Checked",
+            "desc": true
+          }
+        ]
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "TimescaleDB"
+          },
+          "format": "table",
+          "rawSql": "SELECT source AS \"Source\", COUNT(*) AS \"Total\", COUNT(*) FILTER (WHERE status_code = 404) AS \"404 Count\", COUNT(*) FILTER (WHERE not_found_until > now()) AS \"Cached Not-Found\", MAX(last_checked_at) AS \"Last Checked\" FROM neo_agency_fetch_status GROUP BY source ORDER BY source",
+          "refId": "A"
+        }
+      ],
+      "title": "Fetch Status by Source",
+      "type": "table"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 105
+      },
+      "id": 300,
+      "title": "Cross-Agency Concordance Analysis",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "TimescaleDB"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "displayMode": "auto"
+          },
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 0.5
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 2
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "\u0394 Palermo"
+            },
+            "properties": [
+              {
+                "id": "custom.displayMode",
+                "value": "color-background"
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 106
+      },
+      "id": 301,
+      "options": {
+        "sortBy": [
+          {
+            "displayName": "JPL Palermo",
+            "desc": true
+          }
+        ]
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "TimescaleDB"
+          },
+          "format": "table",
+          "rawSql": "SELECT s.designation AS \"Object\", s.palermo_scale_cum AS \"JPL Palermo\", e.ps_cum AS \"ESA Palermo\", ROUND((s.palermo_scale_cum - e.ps_cum)::numeric, 2) AS \"\u0394 Palermo\", s.torino_scale AS \"JPL TS\", e.ts AS \"ESA TS\", ROUND(s.diameter_km::numeric, 3) AS \"JPL Diam (km)\", ROUND(e.diameter_m / 1000.0, 3) AS \"ESA Diam (km)\", s.impact_date_range AS \"Impact Years\" FROM neo_agency_sentry s JOIN neo_agency_esa e ON LOWER(e.esa_designation) = LOWER(s.designation) WHERE s.status = 'active' AND e.on_risk_list = TRUE ORDER BY s.palermo_scale_cum DESC NULLS LAST LIMIT 50",
+          "refId": "A"
+        }
+      ],
+      "title": "JPL Sentry vs ESA NEOCC \u2014 Risk Agreement",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "TimescaleDB"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "fillOpacity": 60,
+            "lineWidth": 1
+          }
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 116
+      },
+      "id": 302,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "TimescaleDB"
+          },
+          "format": "table",
+          "rawSql": "SELECT 'NeoWs' AS source, COUNT(DISTINCT asteroid_id) AS count FROM neo_close_approaches UNION ALL SELECT 'SBDB', COUNT(*) FROM neo_agency_sbdb UNION ALL SELECT 'Sentry (Active)', COUNT(*) FROM neo_agency_sentry WHERE status='active' UNION ALL SELECT 'CAD', COUNT(DISTINCT asteroid_id) FROM neo_agency_cad UNION ALL SELECT 'ESA Risk', COUNT(*) FROM neo_agency_esa WHERE on_risk_list = TRUE UNION ALL SELECT 'Fireball', COUNT(*) FROM neo_fireball_events ORDER BY count DESC",
+          "refId": "A"
+        }
+      ],
+      "title": "Agency Data Coverage (Record Counts)",
+      "type": "barchart"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "TimescaleDB"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            }
+          }
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 116
+      },
+      "id": 303,
+      "options": {
+        "displayLabels": [
+          "name",
+          "percent"
+        ],
+        "legend": {
+          "calcs": [],
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true,
+          "values": [
+            "value"
+          ]
+        },
+        "pieType": "donut"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "TimescaleDB"
+          },
+          "format": "table",
+          "rawSql": "SELECT CASE WHEN cnt >= 3 THEN '3+ agencies' WHEN cnt = 2 THEN '2 agencies' ELSE '1 agency only' END AS coverage, COUNT(*) AS count FROM (SELECT n.asteroid_id, (CASE WHEN s.asteroid_id IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN sen.asteroid_id IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN e.asteroid_id IS NOT NULL THEN 1 ELSE 0 END) AS cnt FROM (SELECT DISTINCT asteroid_id FROM neo_close_approaches) n LEFT JOIN neo_agency_sbdb s ON s.asteroid_id = n.asteroid_id LEFT JOIN neo_agency_sentry sen ON sen.asteroid_id = n.asteroid_id LEFT JOIN neo_agency_esa e ON e.asteroid_id = n.asteroid_id) sub GROUP BY 1 ORDER BY 1 DESC",
+          "refId": "A"
+        }
+      ],
+      "title": "Multi-Agency Coverage per Object",
+      "type": "piechart"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "TimescaleDB"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "displayMode": "auto"
+          }
+        }
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 124
+      },
+      "id": 304,
+      "options": {
+        "sortBy": [
+          {
+            "displayName": "\u0394 Diam (km)",
+            "desc": true
+          }
+        ]
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "TimescaleDB"
+          },
+          "format": "table",
+          "rawSql": "SELECT s.fullname AS \"Object\", ROUND(s.diameter_km::numeric, 3) AS \"SBDB Measured (km)\", ROUND(n.diam_max::numeric, 3) AS \"NeoWs Estimated (km)\", ROUND(ABS(s.diameter_km - n.diam_max)::numeric, 3) AS \"\u0394 Diam (km)\", s.orbit_class_name AS \"Orbit Class\", s.albedo AS \"Albedo\" FROM neo_agency_sbdb s JOIN (SELECT DISTINCT ON (asteroid_id) asteroid_id, estimated_diameter_km_max AS diam_max FROM neo_close_approaches ORDER BY asteroid_id, close_approach_date DESC) n ON n.asteroid_id = s.asteroid_id WHERE s.diameter_km IS NOT NULL AND n.diam_max IS NOT NULL ORDER BY ABS(s.diameter_km - n.diam_max) DESC LIMIT 50",
+          "refId": "A"
+        }
+      ],
+      "title": "Diameter Discrepancy \u2014 SBDB (Measured) vs NeoWs (Estimated)",
+      "type": "table"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 133
+      },
+      "id": 310,
+      "title": "Orbital Dynamics Deep Dive",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "TimescaleDB"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisCenteredZero": false,
+            "showPoints": "always",
+            "pointSize": 5
+          }
+        }
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 134
+      },
+      "id": 311,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "TimescaleDB"
+          },
+          "format": "table",
+          "rawSql": "SELECT semi_major_axis_au AS \"a (AU)\", eccentricity AS \"e\", CASE WHEN is_pha THEN 'PHA' ELSE 'Non-PHA' END AS \"series\", fullname AS \"Object\" FROM neo_agency_sbdb WHERE semi_major_axis_au IS NOT NULL AND eccentricity IS NOT NULL AND semi_major_axis_au < 5",
+          "refId": "A"
+        }
+      ],
+      "title": "Semi-Major Axis vs Eccentricity (a-e Diagram)",
+      "type": "xychart"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "TimescaleDB"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "fillOpacity": 60,
+            "lineWidth": 1
+          }
+        }
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 134
+      },
+      "id": 312,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "TimescaleDB"
+          },
+          "format": "table",
+          "rawSql": "SELECT ROUND(t_jup::numeric, 1) ::text AS t_jup, COUNT(*) AS count FROM neo_agency_sbdb WHERE t_jup IS NOT NULL AND t_jup BETWEEN 2 AND 7 GROUP BY 1 ORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Tisserand Parameter Distribution (T_J)",
+      "type": "barchart"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "TimescaleDB"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "displayMode": "auto"
+          }
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 143
+      },
+      "id": 313,
+      "options": {
+        "sortBy": [
+          {
+            "displayName": "Count",
+            "desc": true
+          }
+        ]
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "TimescaleDB"
+          },
+          "format": "table",
+          "rawSql": "SELECT orbit_class_name AS \"Class\", total AS \"Count\", pha_count AS \"PHA Count\", ROUND(avg_moid_au::numeric, 5) AS \"Avg MOID (AU)\", ROUND(avg_eccentricity::numeric, 4) AS \"Avg e\", ROUND(avg_diameter_km::numeric, 3) AS \"Avg Diam (km)\", ROUND(avg_t_jup::numeric, 2) AS \"Avg T_J\" FROM neo_orbit_class_dist",
+          "refId": "A"
+        }
+      ],
+      "title": "Orbit Class Risk Profile",
+      "type": "table"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 151
+      },
+      "id": 320,
+      "title": "\u26a1 Velocity & Miss Distance Analysis",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "TimescaleDB"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "fillOpacity": 10,
+            "lineWidth": 2
+          }
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 152
+      },
+      "id": 321,
+      "options": {
+        "legend": {
+          "calcs": [
+            "mean",
+            "min"
+          ],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "TimescaleDB"
+          },
+          "format": "time_series",
+          "rawSql": "SELECT time_bucket('1 month', close_approach_date) AS \"time\", COUNT(*) AS \"Approaches\", COUNT(*) FILTER (WHERE is_potentially_hazardous) AS \"Hazardous\", MIN(miss_distance_astronomical::float) AS \"Closest (AU)\" FROM neo_close_approaches WHERE close_approach_date BETWEEN $__timeFrom() AND $__timeTo() GROUP BY 1 ORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Monthly Approach Density",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "TimescaleDB"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "fillOpacity": 10,
+            "lineWidth": 2
+          }
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 152
+      },
+      "id": 322,
+      "options": {
+        "legend": {
+          "calcs": [
+            "min"
+          ],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "TimescaleDB"
+          },
+          "format": "time_series",
+          "rawSql": "SELECT time_bucket('3 months', approach_date) AS \"time\", MIN(distance_au) AS \"Closest (AU)\", COUNT(*) AS \"Count\" FROM neo_agency_cad WHERE approach_date BETWEEN $__timeFrom() AND $__timeTo() GROUP BY 1 ORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "title": "CAD Approach Distance Trend (3-month buckets)",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 160
+      },
+      "id": 330,
+      "title": "Fireball Geospatial & Energy",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "TimescaleDB"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisCenteredZero": false,
+            "showPoints": "always",
+            "pointSize": 8
+          }
+        }
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 161
+      },
+      "id": 331,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "TimescaleDB"
+          },
+          "format": "table",
+          "rawSql": "SELECT velocity_km_s AS \"Velocity (km/s)\", impact_energy_kt AS \"Energy (kt)\", event_date::text AS \"Date\" FROM neo_fireball_events WHERE velocity_km_s IS NOT NULL AND impact_energy_kt IS NOT NULL",
+          "refId": "A"
+        }
+      ],
+      "title": "Fireball Energy vs Entry Velocity",
+      "type": "xychart"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "TimescaleDB"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "displayMode": "auto"
+          }
+        }
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 161
+      },
+      "id": 332,
+      "options": {
+        "sortBy": [
+          {
+            "displayName": "Date",
+            "desc": true
+          }
+        ]
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "TimescaleDB"
+          },
+          "format": "table",
+          "rawSql": "SELECT event_date AS \"Date\", CONCAT(latitude, '\u00b0 ', latitude_dir) AS \"Lat\", CONCAT(longitude, '\u00b0 ', longitude_dir) AS \"Lon\", altitude_km AS \"Alt (km)\", velocity_km_s AS \"Vel (km/s)\", total_radiated_energy_j AS \"Energy (10^10 J)\", ROUND(impact_energy_kt::numeric, 3) AS \"Impact (kt)\" FROM neo_fireball_events ORDER BY event_date DESC LIMIT 50",
+          "refId": "A"
+        }
+      ],
+      "title": "Recent Fireball Events \u2014 Coordinates & Energy",
+      "type": "table"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 170
+      },
+      "id": 340,
+      "title": "Discovery & Data Freshness",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "TimescaleDB"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 24
+              },
+              {
+                "color": "orange",
+                "value": 72
+              },
+              {
+                "color": "red",
+                "value": 168
+              }
+            ]
+          },
+          "unit": "h"
+        }
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 24,
+        "x": 0,
+        "y": 171
+      },
+      "id": 341,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "orientation": "horizontal"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "TimescaleDB"
+          },
+          "format": "table",
+          "rawSql": "SELECT 'NeoWs' AS \"metric\", ROUND(EXTRACT(EPOCH FROM now()-MAX(ingestion_time))/3600, 1) AS \"Hours Stale\" FROM neo_close_approaches UNION ALL SELECT 'SBDB', ROUND(EXTRACT(EPOCH FROM now()-MAX(ingestion_time))/3600, 1) FROM neo_agency_sbdb UNION ALL SELECT 'Sentry', ROUND(EXTRACT(EPOCH FROM now()-MAX(ingestion_time))/3600, 1) FROM neo_agency_sentry UNION ALL SELECT 'CAD', ROUND(EXTRACT(EPOCH FROM now()-MAX(ingestion_time))/3600, 1) FROM neo_agency_cad UNION ALL SELECT 'ESA', ROUND(EXTRACT(EPOCH FROM now()-MAX(ingestion_time))/3600, 1) FROM neo_agency_esa",
+          "refId": "A"
+        }
+      ],
+      "title": "Data Freshness (Hours Since Last Ingestion)",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "TimescaleDB"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "fillOpacity": 10,
+            "lineWidth": 2
+          }
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 176
+      },
+      "id": 342,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "TimescaleDB"
+          },
+          "format": "time_series",
+          "rawSql": "SELECT time_bucket('1 day', ingestion_time) AS \"time\", 'SBDB' AS metric, COUNT(*) AS \"value\" FROM neo_agency_sbdb WHERE ingestion_time BETWEEN $__timeFrom() AND $__timeTo() GROUP BY 1 UNION ALL SELECT time_bucket('1 day', ingestion_time), 'CAD', COUNT(*) FROM neo_agency_cad WHERE ingestion_time BETWEEN $__timeFrom() AND $__timeTo() GROUP BY 1 UNION ALL SELECT time_bucket('1 day', ingestion_time), 'NeoWs', COUNT(*) FROM neo_close_approaches WHERE ingestion_time BETWEEN $__timeFrom() AND $__timeTo() GROUP BY 1 ORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Daily Ingestion Throughput by Source",
+      "type": "timeseries"
+    }
   ],
   "refresh": "5m",
   "schemaVersion": 38,
-  "tags": ["neo", "asteroids", "multi-agency", "v4", "research"],
+  "tags": [
+    "neo",
+    "asteroids",
+    "multi-agency",
+    "v4",
+    "research"
+  ],
   "templating": {
     "list": [
       {
         "current": {},
-        "datasource": {"type":"postgres","uid":"TimescaleDB"},
+        "datasource": {
+          "type": "postgres",
+          "uid": "TimescaleDB"
+        },
         "definition": "SELECT DISTINCT orbit_class FROM neo_agency_sbdb WHERE orbit_class IS NOT NULL ORDER BY orbit_class",
         "hide": 0,
         "includeAll": true,
@@ -126,10 +2098,13 @@
       }
     ]
   },
-  "time": {"from": "now-1y", "to": "now+6M"},
+  "time": {
+    "from": "now-1y",
+    "to": "now+6M"
+  },
   "timepicker": {},
   "timezone": "utc",
-  "title": "NEO Multi-Agency Dashboard (v4 — Research)",
+  "title": "NEO Multi-Agency Dashboard",
   "uid": "neo-multi-agency-v4",
   "version": 5
 }

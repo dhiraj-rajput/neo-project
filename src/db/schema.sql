@@ -312,7 +312,6 @@ CREATE TABLE IF NOT EXISTS neo_agency_cad (
 
 CREATE INDEX IF NOT EXISTS idx_cad_date     ON neo_agency_cad (approach_date DESC);
 CREATE INDEX IF NOT EXISTS idx_cad_distance ON neo_agency_cad (distance_au);
-CREATE INDEX IF NOT EXISTS idx_cad_future   ON neo_agency_cad (approach_date) WHERE approach_date >= CURRENT_DATE;
 
 
 -- ==========================================================

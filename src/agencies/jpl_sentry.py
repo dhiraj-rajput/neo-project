@@ -8,8 +8,11 @@ mode O has 23 summary fields + 6 VI-data fields.
 API docs: https://ssd-api.jpl.nasa.gov/doc/sentry.html
 """
 
-from src.agencies.base import BaseClient
+from src.agencies.base import BaseClient, safe_float, safe_int
 from src.logger import logger
+
+_float = safe_float
+_int = safe_int
 
 
 class SentryClient(BaseClient):
@@ -143,20 +146,3 @@ class SentryClient(BaseClient):
         logger.info(f"Sentry watchlist: {len(results)} active objects")
         return results
 
-
-def _float(val) -> float | None:
-    if val is None:
-        return None
-    try:
-        return float(val)
-    except (ValueError, TypeError):
-        return None
-
-
-def _int(val) -> int | None:
-    if val is None:
-        return None
-    try:
-        return int(val)
-    except (ValueError, TypeError):
-        return None

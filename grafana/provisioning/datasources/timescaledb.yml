@@ -11,7 +11,7 @@ datasources:
       password: neo_password
     jsonData:
       sslmode: disable
-      postgresVersion: 1700
       timescaledb: true
+      database: neo_db
     isDefault: true
     editable: true

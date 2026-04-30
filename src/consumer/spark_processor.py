@@ -272,7 +272,9 @@ def main():
         .getOrCreate()
 
     spark.sparkContext.setLogLevel("WARN")
-    os.makedirs(NEOWS_CHECKPOINT, exist_ok=True)
+    # Suppress noisy KafkaDataConsumer warnings (KAFKA-1894)
+    log4j = spark._jvm.org.apache.log4j
+    log4j.LogManager.getLogger("org.apache.spark.sql.kafka010.KafkaDataConsumer").setLevel(log4j.Level.ERROR)
 
     # NeoWs stream
     neows_raw = spark.readStream.format("kafka") \

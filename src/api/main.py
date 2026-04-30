@@ -1,10 +1,10 @@
 """
 FastAPI backend for the NEO Orbital Tracker.
-Multi-agency API aggregation: NASA NeoWs, JPL SBDB/Sentry/CAD, ESA NEOCC, IAU/MPC.
+Multi-agency API aggregation: NASA NeoWs, JPL SBDB/Sentry/CAD, ESA NEOCC.
 All external calls proxied server-side to avoid CORS issues.
 """
-from contextlib import contextmanager
-from datetime import datetime, date
+from contextlib import asynccontextmanager, contextmanager
+from datetime import datetime, date, timezone
 from decimal import Decimal
 from typing import Optional
 import time
@@ -22,10 +22,29 @@ from src.logger import get_logger
 
 logger = get_logger("neo-api", "api.log")
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Startup/shutdown lifecycle — replaces deprecated on_event."""
+    global _http_client
+    _http_client = httpx.AsyncClient(
+        timeout=httpx.Timeout(15.0, connect=5.0),
+        limits=httpx.Limits(max_connections=20, max_keepalive_connections=10),
+        headers={"User-Agent": "NEO-Orbital-Tracker/2.0 (Research)"},
+    )
+    yield
+    # Shutdown
+    if _http_client:
+        await _http_client.aclose()
+    global _pool
+    if _pool and not _pool.closed:
+        _pool.closeall()
+
+
 app = FastAPI(
     title="NEO Orbital Tracker API",
     description="Multi-agency comparative analysis engine for Near-Earth Objects",
     version="2.0.0",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
@@ -92,7 +111,6 @@ JPL_SENTRY_URL = "https://ssd-api.jpl.nasa.gov/sentry.api"
 JPL_CAD_URL = "https://ssd-api.jpl.nasa.gov/cad.api"
 JPL_FIREBALL_URL = "https://ssd-api.jpl.nasa.gov/fireball.api"
 ESA_NEOCC_BASE = "https://neo.ssa.esa.int/PSDB-portlet/download"
-MPC_ORB_URL = "https://data.minorplanetcenter.net/api/get-orb"
 
 # In-memory cache: key -> (data, timestamp)
 _cache: dict[str, tuple[dict, float]] = {}
@@ -114,23 +132,7 @@ def set_cache(key: str, data: dict):
     _cache[key] = (data, time.time())
 
 
-@app.on_event("startup")
-async def startup():
-    global _http_client
-    _http_client = httpx.AsyncClient(
-        timeout=httpx.Timeout(15.0, connect=5.0),
-        limits=httpx.Limits(max_connections=20, max_keepalive_connections=10),
-        headers={"User-Agent": "NEO-Orbital-Tracker/2.0 (Research)"},
-    )
-
-
-@app.on_event("shutdown")
-async def shutdown():
-    global _pool, _http_client
-    if _pool and not _pool.closed:
-        _pool.closeall()
-    if _http_client:
-        await _http_client.aclose()
+# Lifecycle handled by lifespan() context manager above.
 
 
 async def _fetch_json(url: str, params: dict = None) -> Optional[dict]:
@@ -179,7 +181,7 @@ def get_asteroids(
     Defaults to today + 7 days if no date is provided.
     """
     if not date:
-        date = datetime.utcnow().strftime("%Y-%m-%d")
+        date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
     try:
         with get_db() as conn:
@@ -355,8 +357,6 @@ async def get_asteroid_profile(designation: str):
             sentry = cur.fetchone()
             cur.execute("SELECT * FROM neo_agency_esa WHERE asteroid_id = %s", (asteroid_id,))
             esa = cur.fetchone()
-            cur.execute("SELECT * FROM neo_agency_mpc WHERE asteroid_id = %s", (asteroid_id,))
-            mpc = cur.fetchone()
             cur.execute("SELECT * FROM neo_agency_cad WHERE asteroid_id = %s ORDER BY approach_date DESC LIMIT 50", (asteroid_id,))
             cad_list = cur.fetchall()
 
@@ -448,32 +448,21 @@ async def get_asteroid_profile(designation: str):
                     ],
                 }
 
-            # ESA
+            # ESA — uses actual column names from neo_agency_esa schema
             if esa:
                 esa = serialize_row(dict(esa))
                 profile["agencies"]["esa_neocc"] = {
                     "on_risk_list": esa.get("on_risk_list", False),
                     "designation": esa.get("esa_designation"),
-                    "moid": esa.get("esa_moid"),
-                    "h": esa.get("esa_h"),
-                    "diameter_km": esa.get("esa_diameter_km"),
-                }
-
-            # MPC
-            if mpc:
-                mpc = serialize_row(dict(mpc))
-                profile["agencies"]["iau_mpc"] = {
-                    "status": mpc.get("status", "found"),
-                    "designation": mpc.get("mpc_designation"),
-                    "name": mpc.get("mpc_name"),
-                    "orbital_elements": {
-                        "a": mpc.get("semi_major_axis_au"),
-                        "e": mpc.get("eccentricity"),
-                        "i": mpc.get("inclination_deg"),
-                        "om": mpc.get("long_asc_node_deg"),
-                        "w": mpc.get("arg_perihelion_deg"),
-                        "ma": mpc.get("mean_anomaly_deg"),
-                    },
+                    "name": esa.get("esa_name"),
+                    "diameter_m": esa.get("diameter_m"),
+                    "ip_max": esa.get("ip_max"),
+                    "ip_cum": esa.get("ip_cum"),
+                    "ps_max": esa.get("ps_max"),
+                    "ps_cum": esa.get("ps_cum"),
+                    "torino_scale": esa.get("ts"),
+                    "vel_km_s": esa.get("vel_km_s"),
+                    "years": esa.get("years"),
                 }
 
             cur.close()

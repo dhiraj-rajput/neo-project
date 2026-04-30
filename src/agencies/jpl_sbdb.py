@@ -8,8 +8,11 @@ API docs: https://ssd-api.jpl.nasa.gov/doc/sbdb.html
 """
 
 import json
-from src.agencies.base import BaseClient
+from src.agencies.base import BaseClient, safe_float, safe_int
 from src.logger import logger
+
+_float = safe_float
+_int = safe_int
 
 
 class SBDBClient(BaseClient):
@@ -167,20 +170,3 @@ class SBDBClient(BaseClient):
 
         return result
 
-
-def _float(val) -> float | None:
-    if val is None:
-        return None
-    try:
-        return float(val)
-    except (ValueError, TypeError):
-        return None
-
-
-def _int(val) -> int | None:
-    if val is None:
-        return None
-    try:
-        return int(val)
-    except (ValueError, TypeError):
-        return None
