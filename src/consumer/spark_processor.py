@@ -178,63 +178,65 @@ def process_neows_batch(batch_df, batch_id):
     hash_cols = sorted([c for c in batch_df.columns if c not in exclude_cols])
     batch_hashed = batch_df.withColumn("row_hash", md5(concat_ws("||", *[col(c) for c in hash_cols])))
 
-    rows = batch_hashed.collect()
-    if not rows:
-        return
+    columns = batch_hashed.columns
 
-    with db_connection() as conn:
-        with conn.cursor() as cur:
-            # 1. Fetch existing hashes for CDC
-            ast_ids = list({r["asteroid_id"] for r in rows})
-            # Use parameterised query to avoid SQL injection
-            cur.execute(
-                "SELECT close_approach_date, asteroid_id, row_hash "
-                "FROM neo_close_approaches WHERE asteroid_id = ANY(%s)",
-                (ast_ids,),
-            )
-            existing = cur.fetchall()
-            existing_hashes = {(str(r[0]), r[1]): r[2] for r in existing}
+    def process_partition(partition):
+        rows = list(partition)
+        if not rows:
+            return
 
-            to_upsert = []
-            to_history = []
+        with db_connection() as conn:
+            with conn.cursor() as cur:
+                # 1. Fetch existing hashes for CDC
+                ast_ids = list({r["asteroid_id"] for r in rows})
+                cur.execute(
+                    "SELECT close_approach_date, asteroid_id, row_hash "
+                    "FROM neo_close_approaches WHERE asteroid_id = ANY(%s)",
+                    (ast_ids,),
+                )
+                existing = cur.fetchall()
+                existing_hashes = {(str(r[0]), r[1]): r[2] for r in existing}
 
-            for r in rows:
-                key = (str(r["close_approach_date"]), r["asteroid_id"])
-                old_hash = existing_hashes.get(key)
+                to_upsert = []
+                to_history = []
 
-                if old_hash is None or old_hash != r["row_hash"]:
-                    to_upsert.append(r)
-                    to_history.append({
-                        **r.asDict(),
-                        "change_type": "INSERT" if old_hash is None else "UPDATE",
-                    })
+                for r in rows:
+                    key = (str(r["close_approach_date"]), r["asteroid_id"])
+                    old_hash = existing_hashes.get(key)
 
-            # 2. Write history
-            if to_history:
-                cols = list(to_history[0].keys())
-                vals = [[r[c] for c in cols] for r in to_history]
-                sql = f"INSERT INTO neo_close_approaches_history ({','.join(cols)}) VALUES %s"
-                chunked_execute_values(cur, sql, vals)
+                    if old_hash is None or old_hash != r["row_hash"]:
+                        to_upsert.append(r)
+                        
+                        hist_row = r.asDict()
+                        hist_row["change_type"] = "INSERT" if old_hash is None else "UPDATE"
+                        to_history.append(hist_row)
 
-            # 3. Upsert main table
-            if to_upsert:
-                cols = batch_hashed.columns
-                vals = [[r[c] for c in cols] for r in to_upsert]
-                updates_sql = [
-                    f"{c} = EXCLUDED.{c}"
-                    for c in cols
-                    if c not in ("close_approach_date", "asteroid_id")
-                ]
-                sql = f"""
-                    INSERT INTO neo_close_approaches ({','.join(cols)}) VALUES %s
-                    ON CONFLICT (close_approach_date, asteroid_id)
-                    DO UPDATE SET {','.join(updates_sql)}
-                """
-                chunked_execute_values(cur, sql, vals)
+                # 2. Write history
+                if to_history:
+                    cols = list(to_history[0].keys())
+                    vals = [[r[c] for c in cols] for r in to_history]
+                    sql = f"INSERT INTO neo_close_approaches_history ({','.join(cols)}) VALUES %s"
+                    chunked_execute_values(cur, sql, vals)
 
-        conn.commit()
+                # 3. Upsert main table
+                if to_upsert:
+                    vals = [[r[c] for c in columns] for r in to_upsert]
+                    updates_sql = [
+                        f"{c} = EXCLUDED.{c}"
+                        for c in columns
+                        if c not in ("close_approach_date", "asteroid_id")
+                    ]
+                    sql = f"""
+                        INSERT INTO neo_close_approaches ({','.join(columns)}) VALUES %s
+                        ON CONFLICT (close_approach_date, asteroid_id)
+                        DO UPDATE SET {','.join(updates_sql)}
+                    """
+                    chunked_execute_values(cur, sql, vals)
 
-    logger.info(f"NeoWs batch {batch_id}: {len(to_upsert)} upserts, {len(to_history)} history records.")
+            conn.commit()
+
+    batch_hashed.foreachPartition(process_partition)
+    logger.info(f"NeoWs batch {batch_id} submitted to partitions for DB upsert.")
 
 
 # ── Topic Safety ─────────────────────────────────────────────
@@ -265,10 +267,12 @@ def main():
         .config("spark.jars.packages",
                 "org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.3,"
                 "org.postgresql:postgresql:42.7.3") \
-        .config("spark.sql.shuffle.partitions", "4") \
+        .config("spark.sql.shuffle.partitions", "2") \
         .config("spark.ui.port", "4040") \
         .config("spark.driver.host", "localhost") \
         .config("spark.driver.bindAddress", "127.0.0.1") \
+        .config("spark.driver.memory", "512m") \
+        .config("spark.executor.memory", "512m") \
         .getOrCreate()
 
     spark.sparkContext.setLogLevel("WARN")

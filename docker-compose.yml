@@ -17,7 +17,7 @@ services:
     volumes:
       - kafka-data:/var/lib/kafka/data
     healthcheck:
-      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092"]
+      test: [ "CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092" ]
       interval: 15s
       timeout: 20s
       retries: 5
@@ -33,12 +33,13 @@ services:
       POSTGRES_USER: ${DB_USER:-neo_user}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-neo_password}
       POSTGRES_DB: ${DB_NAME:-neo_db}
+    command: [ "postgres", "-c", "shared_buffers=64MB", "-c", "work_mem=4MB" ]
     volumes:
       - timescale-data:/var/lib/postgresql/data
       - ./src/db/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql
       - ./src/db/history_init.sql:/docker-entrypoint-initdb.d/02_history_init.sql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-neo_user} -d ${DB_NAME:-neo_db}"]
+      test: [ "CMD-SHELL", "pg_isready -U ${DB_USER:-neo_user} -d ${DB_NAME:-neo_db}" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -75,7 +76,7 @@ services:
     depends_on:
       timescaledb:
         condition: service_healthy
-    command: python -m uvicorn src.api.main:app --host 0.0.0.0 --port 8000 --reload
+    command: python -m uvicorn src.api.main:app --host 0.0.0.0 --port 8000
     networks:
       - neo-network
 

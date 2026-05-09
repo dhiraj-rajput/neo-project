@@ -26,6 +26,11 @@ class Config:
     SPARK_APP_NAME = os.getenv("SPARK_APP_NAME", "NeoWsStreamProcessor")
     PRODUCER_PARTITION_BY_DATE = os.getenv("PRODUCER_PARTITION_BY_DATE", "false").lower() == "true"
 
+    # --- Rate Limiting ---
+    JPL_RATE_LIMIT_DELAY = float(os.getenv("JPL_RATE_LIMIT_DELAY", "1.0"))
+    JPL_MAX_CONCURRENT = int(os.getenv("JPL_MAX_CONCURRENT", "1"))
+    NASA_PROACTIVE_ROTATE_THRESHOLD = int(os.getenv("NASA_PROACTIVE_ROTATE_THRESHOLD", "5"))
+
     # --- Paths ---
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))      # src/
     PROJECT_ROOT = os.path.dirname(BASE_DIR)                   # root/

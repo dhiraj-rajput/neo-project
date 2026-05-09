@@ -14,6 +14,7 @@ import os
 
 import psycopg2
 import psycopg2.extras
+import psycopg2.pool
 from contextlib import contextmanager
 from kafka import KafkaConsumer
 
@@ -25,21 +26,30 @@ AGENCY_TOPIC = os.getenv("AGENCY_TOPIC", "agency_ingest")
 CONSUMER_GROUP = "agency-processor"
 
 
-@contextmanager
-def db_connection():
-    conn = None
-    try:
-        conn = psycopg2.connect(
+_pool: psycopg2.pool.ThreadedConnectionPool | None = None
+
+def _get_pool() -> psycopg2.pool.ThreadedConnectionPool:
+    global _pool
+    if _pool is None or _pool.closed:
+        _pool = psycopg2.pool.ThreadedConnectionPool(
+            minconn=2,
+            maxconn=10,
             host=Config.DB_HOST, port=Config.DB_PORT,
             dbname=Config.DB_NAME, user=Config.DB_USER, password=Config.DB_PASSWORD,
         )
+    return _pool
+
+@contextmanager
+def db_connection():
+    pool = _get_pool()
+    conn = pool.getconn()
+    try:
         yield conn
     except Exception as e:
         logger.error(f"DB connection error: {e}")
         raise
     finally:
-        if conn:
-            conn.close()
+        pool.putconn(conn)
 
 
 def compute_hash(record: dict) -> str:
@@ -236,46 +246,43 @@ def upsert_fireballs(cur, records: list[dict]):
 # Main Consumer Loop
 # ──────────────────────────────────────────────────────────────
 
-def process_message(msg_bytes: bytes):
-    """Process a single Kafka message containing multi-agency data."""
-    try:
-        payload = json.loads(msg_bytes.decode("utf-8"))
-    except (json.JSONDecodeError, UnicodeDecodeError) as e:
-        logger.warning(f"Skipping malformed message: {e}")
+def process_batch(payloads: list[dict]):
+    """Process a batch of parsed JSON payloads using a single DB connection."""
+    if not payloads:
         return
-
-    asteroid_id = payload.get("asteroid_id")
-    if not asteroid_id:
-        return
-
-    agencies = payload.get("agencies", {})
 
     with db_connection() as conn:
         with conn.cursor() as cur:
-            sbdb = agencies.get("sbdb")
-            if sbdb:
-                upsert_sbdb(cur, asteroid_id, sbdb)
+            for payload in payloads:
+                asteroid_id = payload.get("asteroid_id")
+                if not asteroid_id:
+                    continue
 
-            sentry = agencies.get("sentry")
-            if sentry:
-                upsert_sentry(cur, asteroid_id, sentry)
+                agencies = payload.get("agencies", {})
 
-            cad = agencies.get("cad")
-            if isinstance(cad, list) and cad:
-                upsert_cad(cur, asteroid_id, cad)
+                sbdb = agencies.get("sbdb")
+                if sbdb:
+                    upsert_sbdb(cur, asteroid_id, sbdb)
 
-            esa = agencies.get("esa")
-            if esa:
-                upsert_esa(cur, asteroid_id, esa)
+                sentry = agencies.get("sentry")
+                if sentry:
+                    upsert_sentry(cur, asteroid_id, sentry)
 
-            # Fireball events are global (not per asteroid)
-            fireballs = agencies.get("fireball")
-            if isinstance(fireballs, list) and fireballs:
-                upsert_fireballs(cur, fireballs)
+                cad = agencies.get("cad")
+                if isinstance(cad, list) and cad:
+                    upsert_cad(cur, asteroid_id, cad)
+
+                esa = agencies.get("esa")
+                if esa:
+                    upsert_esa(cur, asteroid_id, esa)
+
+                fireballs = agencies.get("fireball")
+                if isinstance(fireballs, list) and fireballs:
+                    upsert_fireballs(cur, fireballs)
 
         conn.commit()
 
-    logger.info(f"Processed agency data for {asteroid_id}")
+    logger.info(f"Processed batch of {len(payloads)} agency records.")
 
 
 def main():
@@ -288,17 +295,37 @@ def main():
         auto_offset_reset="earliest",
         enable_auto_commit=True,
         value_deserializer=None,
+        fetch_max_bytes=5242880,  # Max 5MB per poll to prevent Python OOM
     )
 
     logger.info("Agency processor connected. Waiting for messages...")
 
     try:
-        for message in consumer:
-            process_message(message.value)
+        while True:
+            # Poll for a batch of messages (up to 500)
+            msg_pack = consumer.poll(timeout_ms=1000, max_records=500)
+            if not msg_pack:
+                continue
+
+            payloads = []
+            for tp, messages in msg_pack.items():
+                for message in messages:
+                    try:
+                        payload = json.loads(message.value.decode("utf-8"))
+                        payloads.append(payload)
+                    except (json.JSONDecodeError, UnicodeDecodeError) as e:
+                        logger.warning(f"Skipping malformed message: {e}")
+
+            if payloads:
+                process_batch(payloads)
+
     except KeyboardInterrupt:
         logger.info("Agency processor shutting down.")
     finally:
         consumer.close()
+        global _pool
+        if _pool and not _pool.closed:
+            _pool.closeall()
 
 
 if __name__ == "__main__":

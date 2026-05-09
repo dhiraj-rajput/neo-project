@@ -211,18 +211,22 @@ class PipelineStatus:
 
 
 class MultiKeyRateLimiter:
-    def __init__(self, keys):
+    def __init__(self, keys, proactive_threshold=None):
         self.keys = keys if keys else ["DEMO_KEY"]
         self.lock = threading.Lock()
 
         self.key_cooldowns = {}      # key -> ready_at
         self.failed_this_round = set()
+        self.key_remaining = {}      # key -> remaining requests in current window
 
         self.global_sleep_until = 0
 
         # Configurable timing
         self.base_cooldown = 60 * 60     # 1 hour
         self.buffer = 5 * 60             # 5 min buffer
+        self.proactive_threshold = proactive_threshold if proactive_threshold is not None else int(
+            os.getenv("NASA_PROACTIVE_ROTATE_THRESHOLD", "5")
+        )
 
     def get_key(self):
         """
@@ -273,23 +277,36 @@ class MultiKeyRateLimiter:
             # Sleep outside lock
             if wait > 0:
                 time.sleep(max(wait, 5)) # Sleep at least 5s to avoid tight loops if wait is tiny
-            # (Simple heuristic: if wait was long, we probably just woke up)
-            # Actually better: just update to RUNNING if we found a key successfully
-            
 
-    def report_429(self, key):
+    def update_remaining(self, key, remaining):
         """
-        Mark failure for this round. don't sleep yet.
+        Track remaining requests from X-RateLimit-Remaining header.
+        Proactively soft-pause keys near depletion to avoid 429s.
         """
+        with self.lock:
+            self.key_remaining[key] = remaining
+            if remaining <= self.proactive_threshold:
+                # Soft pause — cooldown for 60s to let the rolling window advance
+                self.key_cooldowns[key] = time.time() + 60
+                logger.info(
+                    f"Key ...{key[-4:]} has {remaining} requests left. Proactive pause 60s."
+                )
+
+    def report_429(self, key, cooldown=None):
+        """
+        Mark failure for this round. Uses Retry-After header if available,
+        otherwise falls back to base_cooldown (1 hour).
+        """
+        if cooldown is None:
+            cooldown = self.base_cooldown
         with self.lock:
             if key in self.failed_this_round:
                 return # Already handled, avoid log spam
 
             self.failed_this_round.add(key)
-            # Set individual key cooldown (can be same as base or shorter, but safe to set to base)
-            self.key_cooldowns[key] = time.time() + self.base_cooldown
+            self.key_cooldowns[key] = time.time() + cooldown
             logger.warning(
-                f"Key {key[-4:]} hit 429. Marked failed for this round."
+                f"Key ...{key[-4:]} hit 429. Cooldown {cooldown}s. Marked failed for this round."
             )
 
     def report_success(self, key):
@@ -310,8 +327,6 @@ def fetch_and_send(start_date, end_date, limiter, producer, session):
     
     # We got a key, so we are running. 
     # Update status to RUNNING (idempotent, lightweight json dump)
-    # Optional: Cache last status to avoid IO spam? 
-    # For simplicity, let's just do it in the main loop start.
     
     params = {'start_date': start_date, 'end_date': end_date, 'api_key': api_key}
     
@@ -325,6 +340,14 @@ def fetch_and_send(start_date, end_date, limiter, producer, session):
     try:
         # Use passed session for connection reuse
         resp = session.get(Config.NASA_URL, params=params, timeout=30)
+
+        # Proactive rate tracking from response headers
+        remaining = resp.headers.get('X-RateLimit-Remaining')
+        if remaining is not None:
+            try:
+                limiter.update_remaining(api_key, int(remaining))
+            except (ValueError, TypeError):
+                pass
         
         if resp.status_code == 200:
             # Critical: Clear failure status on success
@@ -356,11 +379,6 @@ def fetch_and_send(start_date, end_date, limiter, producer, session):
                     fut.add_errback(on_send_error)
                     send_futures.append(fut)
 
-            # Wait for local confirmation to ensure data integrity
-            # (Optional: can just check send_failed if you want non-blocking, 
-            # but user requested treating send failure as window failure)
-            # We'll check the flag after dispatch.
-            
             # If any callback fired error immediately
             if send_failed.is_set():
                 return False
@@ -368,8 +386,15 @@ def fetch_and_send(start_date, end_date, limiter, producer, session):
             return count
 
         elif resp.status_code == 429:
-            # Report the key and ask to RETRY
-            limiter.report_429(api_key)
+            # Use Retry-After header if provided, else fall back to base cooldown
+            retry_after = None
+            raw = resp.headers.get('Retry-After')
+            if raw:
+                try:
+                    retry_after = int(raw)
+                except (ValueError, TypeError):
+                    pass
+            limiter.report_429(api_key, cooldown=retry_after)
             return "RETRY"
 
         elif resp.status_code == 404:

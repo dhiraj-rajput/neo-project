@@ -22,6 +22,7 @@ from datetime import datetime, timezone
 
 import httpx
 import psycopg2
+import psycopg2.pool
 from contextlib import contextmanager
 from kafka import KafkaProducer
 
@@ -80,35 +81,76 @@ def extract_designation_candidates(asteroid_id: str, name: str | None = None) ->
 
 # ── Database Helpers ─────────────────────────────────────────
 
+_pool: psycopg2.pool.ThreadedConnectionPool | None = None
+
+
+def _get_pool() -> psycopg2.pool.ThreadedConnectionPool:
+    """Lazy-init a shared connection pool (thread-safe, max 10 conns)."""
+    global _pool
+    if _pool is None or _pool.closed:
+        _pool = psycopg2.pool.ThreadedConnectionPool(
+            minconn=2,
+            maxconn=10,
+            host=Config.DB_HOST,
+            port=Config.DB_PORT,
+            database=Config.DB_NAME,
+            user=Config.DB_USER,
+            password=Config.DB_PASSWORD,
+        )
+    return _pool
+
+
 @contextmanager
 def _db():
-    """Context-managed DB connection — prevents leaks on exception paths."""
-    conn = psycopg2.connect(
-        host=Config.DB_HOST, port=Config.DB_PORT,
-        database=Config.DB_NAME, user=Config.DB_USER, password=Config.DB_PASSWORD,
-    )
+    """Context-managed DB connection — recycles via pool instead of open/close."""
+    pool = _get_pool()
+    conn = pool.getconn()
     try:
         yield conn
     finally:
-        conn.close()
+        pool.putconn(conn)
 
 
 def load_asteroids_to_profile(limit: int = BATCH_SIZE) -> list[dict]:
     """Load asteroids needing agency profiling (never-profiled or stale)."""
     with _db() as conn:
         with conn.cursor() as cur:
+            # 1. Fetch stale records first (fast index scan on small table)
             cur.execute("""
-                SELECT n.asteroid_id, n.name
-                FROM (
-                    SELECT DISTINCT asteroid_id, name FROM neo_close_approaches
-                ) n
-                LEFT JOIN neo_agency_sbdb s ON s.asteroid_id = n.asteroid_id
-                WHERE s.asteroid_id IS NULL
-                   OR s.ingestion_time < now() - INTERVAL '7 days'
-                ORDER BY s.ingestion_time NULLS FIRST
+                SELECT s.asteroid_id, (
+                    SELECT name FROM neo_close_approaches 
+                    WHERE asteroid_id = s.asteroid_id LIMIT 1
+                ) as name
+                FROM neo_agency_sbdb s
+                WHERE s.ingestion_time < now() - INTERVAL '7 days'
+                ORDER BY s.ingestion_time ASC
                 LIMIT %s
             """, (limit,))
-            return [{"asteroid_id": r[0], "name": r[1]} for r in cur.fetchall()]
+            stale = [{"asteroid_id": r[0], "name": r[1]} for r in cur.fetchall()]
+            
+            if len(stale) >= limit:
+                return stale
+                
+            # 2. Fetch never-profiled records using Recursive CTE (Skip Scan)
+            # This completely bypasses the hypertable sequential scan
+            remaining = limit - len(stale)
+            cur.execute("""
+                WITH RECURSIVE t AS (
+                    SELECT MIN(asteroid_id) AS asteroid_id FROM neo_close_approaches
+                    UNION ALL
+                    SELECT (SELECT MIN(asteroid_id) FROM neo_close_approaches WHERE asteroid_id > t.asteroid_id)
+                    FROM t WHERE t.asteroid_id IS NOT NULL
+                )
+                SELECT t.asteroid_id, 
+                       (SELECT name FROM neo_close_approaches WHERE asteroid_id = t.asteroid_id LIMIT 1) as name
+                FROM t
+                WHERE t.asteroid_id IS NOT NULL 
+                  AND NOT EXISTS (SELECT 1 FROM neo_agency_sbdb s WHERE s.asteroid_id = t.asteroid_id)
+                LIMIT %s
+            """, (remaining,))
+            
+            new_records = [{"asteroid_id": r[0], "name": r[1]} for r in cur.fetchall()]
+            return stale + new_records
 
 
 def should_skip_source(asteroid_id: str, source: str) -> bool:
@@ -266,7 +308,7 @@ async def run_ingestion_cycle():
     """Run full cycle: load asteroids, fetch profiles, publish to Kafka."""
     producer = create_kafka_producer()
 
-    jpl_sem = asyncio.Semaphore(3)
+    jpl_sem = asyncio.Semaphore(1)  # JPL SSD fair-use: sequential requests only
 
     async with httpx.AsyncClient(
         timeout=httpx.Timeout(30.0, connect=10.0),
@@ -321,6 +363,11 @@ async def run_ingestion_cycle():
             await asyncio.sleep(CYCLE_SLEEP)
 
     producer.close()
+    # Close the DB connection pool
+    global _pool
+    if _pool and not _pool.closed:
+        _pool.closeall()
+        _pool = None
     logger.info("Agency producer shut down cleanly.")
 
 

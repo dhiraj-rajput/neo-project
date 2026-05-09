@@ -17,6 +17,7 @@ import psycopg2.pool
 import httpx
 import os
 import json
+from cachetools import TTLCache
 
 from src.logger import get_logger
 
@@ -65,13 +66,13 @@ DB_CONFIG = {
 }
 
 # Lazy-initialized connection pool (created on first request)
-_pool: Optional[psycopg2.pool.SimpleConnectionPool] = None
+_pool: Optional[psycopg2.pool.ThreadedConnectionPool] = None
 
 
-def get_pool() -> psycopg2.pool.SimpleConnectionPool:
+def get_pool() -> psycopg2.pool.ThreadedConnectionPool:
     global _pool
     if _pool is None or _pool.closed:
-        _pool = psycopg2.pool.SimpleConnectionPool(
+        _pool = psycopg2.pool.ThreadedConnectionPool(
             minconn=2,
             maxconn=10,
             **DB_CONFIG,
@@ -112,42 +113,54 @@ JPL_CAD_URL = "https://ssd-api.jpl.nasa.gov/cad.api"
 JPL_FIREBALL_URL = "https://ssd-api.jpl.nasa.gov/fireball.api"
 ESA_NEOCC_BASE = "https://neo.ssa.esa.int/PSDB-portlet/download"
 
-# In-memory cache: key -> (data, timestamp)
-_cache: dict[str, tuple[dict, float]] = {}
+# Cache TTL settings
 CACHE_TTL = 3600  # 1 hour default
 SENTRY_CACHE_TTL = 7200  # 2 hours for sentry watchlist (rarely changes)
 NEGATIVE_CACHE_TTL = 24 * 3600  # 24 hours for confirmed external 404s
 
+# Bounded in-memory caches with automatic TTL eviction
+_cache: TTLCache = TTLCache(maxsize=2000, ttl=CACHE_TTL)
+_neg_cache: TTLCache = TTLCache(maxsize=500, ttl=NEGATIVE_CACHE_TTL)
+
 
 def get_cached(key: str, ttl: int = CACHE_TTL) -> Optional[dict]:
-    if key in _cache:
-        data, ts = _cache[key]
-        if time.time() - ts < ttl:
-            return data
-        del _cache[key]
-    return None
+    # Check negative cache first
+    if key in _neg_cache:
+        return None
+    return _cache.get(key)
 
 
-def set_cache(key: str, data: dict):
-    _cache[key] = (data, time.time())
+def set_cache(key: str, data: dict, negative: bool = False):
+    if negative:
+        _neg_cache[key] = True
+    else:
+        _cache[key] = data
 
 
 # Lifecycle handled by lifespan() context manager above.
 
 
 async def _fetch_json(url: str, params: dict = None) -> Optional[dict]:
-    """Safe external API fetch with error handling."""
+    """Safe external API fetch with caching and error handling."""
     cache_key = f"external:{url}:{json.dumps(params or {}, sort_keys=True)}"
-    cached = get_cached(cache_key, NEGATIVE_CACHE_TTL)
-    if cached and cached.get("_not_found"):
+
+    # Check negative cache (confirmed 404s)
+    cached = get_cached(cache_key)
+    if cached is not None:
+        return cached
+
+    # Check if this key is in negative cache
+    if cache_key in _neg_cache:
         return None
 
     try:
         resp = await _http_client.get(url, params=params)
         if resp.status_code == 200:
-            return resp.json()
+            data = resp.json()
+            set_cache(cache_key, data)
+            return data
         if resp.status_code == 404:
-            set_cache(cache_key, {"_not_found": True})
+            set_cache(cache_key, {}, negative=True)
             logger.info(f"API {url} returned 404; cached negative result for params={params}")
             return None
         logger.warning(f"API {url} returned {resp.status_code}")

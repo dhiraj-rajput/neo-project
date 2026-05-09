@@ -101,6 +101,11 @@ class BaseClient:
                     return resp.text
                 if resp.status_code in (404, 400):
                     return None
+                if resp.status_code == 429:
+                    wait = min((attempt + 1) * 30, 120)
+                    logger.warning(f"[{self.name}] Rate limited (429) on text fetch. Waiting {wait}s...")
+                    await asyncio.sleep(wait)
+                    continue  # retry
                 # 5xx — retry
                 if attempt == max_retries - 1:
                     logger.warning(f"[{self.name}] Text fetch failed after {max_retries} retries: HTTP {resp.status_code}")
@@ -179,6 +184,14 @@ class BaseClient:
                         hold = datetime.now(timezone.utc) + timedelta(days=NOT_FOUND_HOLD_DAYS)
                         return None, FetchStatus(self.name, 404, "not_found", hold)
                     return None, FetchStatus(self.name, 400, "client_error")
+
+                if status == 429:
+                    wait = min((attempt + 1) * 30, 120)  # 30s, 60s, 120s
+                    logger.warning(f"[{self.name}] Rate limited (429). Waiting {wait}s (attempt {attempt + 1}/{max_retries})...")
+                    await asyncio.sleep(wait)
+                    if attempt == max_retries - 1:
+                        return None, FetchStatus(self.name, 429, "rate_limited")
+                    continue  # retry
 
                 if 400 < status < 500:
                     return None, FetchStatus(self.name, status, "client_error")
