@@ -18,7 +18,17 @@ neo_theme = Theme({
     "pipeline": "bold magenta",
 })
 
-console = Console(theme=neo_theme, force_terminal=True)
+def _detect_terminal() -> bool:
+    """Auto-detect terminal capability; override with FORCE_COLOR env var."""
+    env_val = os.getenv("FORCE_COLOR", "").lower()
+    if env_val in ("1", "true", "yes"):
+        return True
+    if env_val in ("0", "false", "no"):
+        return False
+    return hasattr(sys.stdout, "isatty") and sys.stdout.isatty()
+
+
+console = Console(theme=neo_theme, force_terminal=_detect_terminal())
 
 
 def _log_level() -> int:

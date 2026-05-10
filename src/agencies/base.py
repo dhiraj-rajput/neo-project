@@ -5,14 +5,59 @@ All agency modules inherit from this.
 Supports two usage patterns:
   1. Standalone: client = SBDBClient()  — creates its own httpx session
   2. Shared:     client = SBDBClient(http_client=shared_client) — reuses a session
+
+Rate limiting uses a token-bucket approach that allows true parallelism
+across asteroids while respecting per-host fair-use policies.
 """
 
 import asyncio
+import time
 import httpx
 from datetime import datetime, timedelta, timezone
 from src.logger import logger
 
 NOT_FOUND_HOLD_DAYS = 30
+
+
+# ── Token Bucket Rate Limiter ─────────────────────────────────
+# Allows burst traffic while enforcing a sustained request rate.
+# Much more efficient than Semaphore(1) + sleep(0.3).
+
+class TokenBucketRateLimiter:
+    """
+    Async token-bucket rate limiter.
+
+    Allows `burst` requests immediately, then sustains `rate` req/s.
+    Multiple coroutines can acquire tokens concurrently — the limiter
+    only blocks when the bucket is empty.
+
+    Args:
+        rate:  Sustained requests per second (e.g. 10.0)
+        burst: Maximum burst size (e.g. 5)
+    """
+
+    def __init__(self, rate: float = 10.0, burst: int = 5):
+        self.rate = rate
+        self.burst = burst
+        self._tokens = float(burst)
+        self._last_refill = time.monotonic()
+        self._lock = asyncio.Lock()
+
+    async def acquire(self):
+        """Wait until a token is available, then consume it."""
+        while True:
+            async with self._lock:
+                now = time.monotonic()
+                elapsed = now - self._last_refill
+                self._tokens = min(self.burst, self._tokens + elapsed * self.rate)
+                self._last_refill = now
+
+                if self._tokens >= 1.0:
+                    self._tokens -= 1.0
+                    return
+
+            # No token available — wait for one to refill
+            await asyncio.sleep(1.0 / self.rate)
 
 
 class FetchStatus:
@@ -34,11 +79,12 @@ class BaseClient:
     Async HTTP client with rate-limiting, retries, and 404-caching.
 
     Constructor args:
-        name:        Agency name for logging
-        base_url:    API host (e.g. "https://ssd-api.jpl.nasa.gov")
-        rate_limit:  Min seconds between requests
-        http_client: Optional shared httpx.AsyncClient
-        semaphore:   Optional asyncio.Semaphore for concurrency control
+        name:         Agency name for logging
+        base_url:     API host (e.g. "https://ssd-api.jpl.nasa.gov")
+        rate_limit:   Min seconds between requests (used to build default rate limiter)
+        http_client:  Optional shared httpx.AsyncClient
+        semaphore:    DEPRECATED — kept for backward compat, ignored if rate_limiter is set
+        rate_limiter: Optional shared TokenBucketRateLimiter for cross-client rate control
     """
 
     def __init__(
@@ -48,13 +94,16 @@ class BaseClient:
         rate_limit: float = 1.0,
         http_client: httpx.AsyncClient | None = None,
         semaphore: asyncio.Semaphore | None = None,
+        rate_limiter: TokenBucketRateLimiter | None = None,
     ):
         self.name = name
         self.base_url = base_url.rstrip("/")
         self.rate_limit = rate_limit
         self._client = http_client
         self._owns_client = http_client is None
-        self._semaphore = semaphore
+        # Prefer explicit rate_limiter; fall back to semaphore for compat
+        self._rate_limiter = rate_limiter
+        self._semaphore = semaphore if rate_limiter is None else None
 
     async def _ensure_client(self) -> httpx.AsyncClient:
         if self._client is None:
@@ -64,6 +113,18 @@ class BaseClient:
                 headers={"User-Agent": "NEO-Orbital-Tracker/3.0 (Research)"},
             )
         return self._client
+
+    async def _rate_gate(self):
+        """Acquire rate-limit token before making a request."""
+        if self._rate_limiter:
+            await self._rate_limiter.acquire()
+        elif self._semaphore:
+            await self._semaphore.acquire()
+
+    def _rate_release(self):
+        """Release semaphore after request (only for legacy semaphore mode)."""
+        if self._semaphore and not self._rate_limiter:
+            self._semaphore.release()
 
     async def _get(self, path: str, params: dict | None = None,
                    max_retries: int = 3) -> dict | None:
@@ -89,13 +150,11 @@ class BaseClient:
 
         for attempt in range(max_retries):
             try:
-                if self._semaphore:
-                    async with self._semaphore:
-                        resp = await client.get(url, params=params)
-                        await asyncio.sleep(self.rate_limit)
-                else:
+                await self._rate_gate()
+                try:
                     resp = await client.get(url, params=params)
-                    await asyncio.sleep(self.rate_limit)
+                finally:
+                    self._rate_release()
 
                 if resp.status_code == 200:
                     return resp.text
@@ -138,13 +197,11 @@ class BaseClient:
                     kwargs["json"] = json_body
                     kwargs["headers"] = {"Content-Type": "application/json"}
 
-                if self._semaphore:
-                    async with self._semaphore:
-                        resp = await client.request(method, url, **kwargs)
-                        await asyncio.sleep(self.rate_limit)
-                else:
+                await self._rate_gate()
+                try:
                     resp = await client.request(method, url, **kwargs)
-                    await asyncio.sleep(self.rate_limit)
+                finally:
+                    self._rate_release()
 
                 status = resp.status_code
 

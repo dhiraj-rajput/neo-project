@@ -1,4 +1,5 @@
 import os
+from datetime import date
 from dotenv import load_dotenv
 
 # Load .env from project root
@@ -23,8 +24,16 @@ class Config:
 
     # --- App Logic ---
     START_DATE = os.getenv("START_DATE", "1899-12-30")
+    END_DATE = os.getenv("END_DATE", "")  # empty = "now"
     SPARK_APP_NAME = os.getenv("SPARK_APP_NAME", "NeoWsStreamProcessor")
     PRODUCER_PARTITION_BY_DATE = os.getenv("PRODUCER_PARTITION_BY_DATE", "false").lower() == "true"
+
+    # --- Agency Ingestion ---
+    # Derives from the same START_DATE the pipeline uses.
+    # END_DATE defaults to today's date (computed at startup).
+    AGENCY_START_DATE = os.getenv("START_DATE", "1899-12-30")
+    AGENCY_END_DATE = os.getenv("END_DATE", "") or date.today().isoformat()
+    AGENCY_CAD_DIST_MAX = os.getenv("AGENCY_CAD_DIST_MAX", "0.5")
 
     # --- Rate Limiting ---
     JPL_RATE_LIMIT_DELAY = float(os.getenv("JPL_RATE_LIMIT_DELAY", "1.0"))

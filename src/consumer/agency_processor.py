@@ -6,25 +6,43 @@ into the respective neo_agency_* tables.
 
 Column lists are derived from LIVE API field discovery (2026-04-27)
 and exactly match schema.sql v4. Zero JSONB — every field stored.
+
+Performance:
+  - ALL upserts use psycopg2.extras.execute_values for batch efficiency
+  - SBDB/Sentry/ESA are grouped and batch-upserted per poll cycle
+  - Manual offset commit for backpressure control
+  - Full progress tracking: lag, throughput, ETA, per-source timing
 """
 
 import json
 import hashlib
 import os
+import time
+from collections import defaultdict
 
 import psycopg2
 import psycopg2.extras
 import psycopg2.pool
 from contextlib import contextmanager
-from kafka import KafkaConsumer
+from kafka import KafkaConsumer, TopicPartition
 
 from src.config import Config
-from src.logger import logger
+from src.logger import logger, console
+
+from rich.table import Table
 
 
 AGENCY_TOPIC = os.getenv("AGENCY_TOPIC", "agency_ingest")
 CONSUMER_GROUP = "agency-processor"
 
+# Tuning knobs
+POLL_MAX_RECORDS = int(os.getenv("AGENCY_POLL_MAX_RECORDS", "2000"))
+POLL_TIMEOUT_MS = int(os.getenv("AGENCY_POLL_TIMEOUT_MS", "3000"))
+PROGRESS_INTERVAL = int(os.getenv("AGENCY_PROGRESS_INTERVAL", "30"))  # seconds
+LOG_EVERY_N_BATCHES = int(os.getenv("AGENCY_LOG_EVERY_N", "10"))      # reduce log spam
+
+
+# ── Connection Pool ──────────────────────────────────────────
 
 _pool: psycopg2.pool.ThreadedConnectionPool | None = None
 
@@ -36,6 +54,7 @@ def _get_pool() -> psycopg2.pool.ThreadedConnectionPool:
             maxconn=10,
             host=Config.DB_HOST, port=Config.DB_PORT,
             dbname=Config.DB_NAME, user=Config.DB_USER, password=Config.DB_PASSWORD,
+            keepalives=1, keepalives_idle=30, keepalives_interval=10, keepalives_count=5,
         )
     return _pool
 
@@ -61,6 +80,129 @@ def compute_hash(record: dict) -> str:
     ))
     return hashlib.md5(raw.encode()).hexdigest()
 
+
+# ══════════════════════════════════════════════════════════════
+# Progress Tracker
+# ══════════════════════════════════════════════════════════════
+
+class ProgressTracker:
+    """Tracks throughput, lag, and per-source metrics."""
+
+    def __init__(self):
+        self.start_time = time.monotonic()
+        self.last_report_time = self.start_time
+        self.total_messages = 0
+        self.total_batches = 0
+        self.initial_lag: int | None = None
+        self.current_lag: int | None = None
+
+        # Per-source counters
+        self.source_counts = defaultdict(int)    # e.g. sbdb=500, cad=12000
+        self.source_time_ms = defaultdict(float) # cumulative ms per source
+        self.batch_times: list[float] = []       # last 50 batch times
+
+    def record_batch(self, n_messages: int, batch_time_s: float,
+                     source_breakdown: dict[str, int],
+                     source_timings: dict[str, float]):
+        """Record metrics for one poll cycle."""
+        self.total_messages += n_messages
+        self.total_batches += 1
+        self.batch_times.append(batch_time_s)
+        if len(self.batch_times) > 50:
+            self.batch_times.pop(0)
+
+        for src, count in source_breakdown.items():
+            self.source_counts[src] += count
+        for src, ms in source_timings.items():
+            self.source_time_ms[src] += ms
+
+    def update_lag(self, lag: int):
+        if self.initial_lag is None:
+            self.initial_lag = lag
+        self.current_lag = lag
+
+    @property
+    def elapsed_s(self) -> float:
+        return time.monotonic() - self.start_time
+
+    @property
+    def throughput(self) -> float:
+        """Messages per second (overall)."""
+        elapsed = self.elapsed_s
+        return self.total_messages / elapsed if elapsed > 0 else 0
+
+    @property
+    def avg_batch_time(self) -> float:
+        """Average batch time in seconds (recent 50)."""
+        if not self.batch_times:
+            return 0
+        return sum(self.batch_times) / len(self.batch_times)
+
+    @property
+    def eta_seconds(self) -> float | None:
+        """Estimated seconds to drain remaining lag."""
+        if self.current_lag is None or self.throughput <= 0:
+            return None
+        return self.current_lag / self.throughput
+
+    def should_report(self) -> bool:
+        return (time.monotonic() - self.last_report_time) >= PROGRESS_INTERVAL
+
+    def report(self):
+        """Print a Rich progress summary table."""
+        self.last_report_time = time.monotonic()
+        elapsed = self.elapsed_s
+
+        table = Table(
+            title="[bold magenta]Agency Processor Progress[/]",
+            show_header=True, header_style="bold cyan",
+            border_style="dim", pad_edge=False,
+        )
+        table.add_column("Metric", style="white", min_width=22)
+        table.add_column("Value", style="green", justify="right", min_width=16)
+
+        # Overall
+        table.add_row("Elapsed", _fmt_duration(elapsed))
+        table.add_row("Total Messages", f"{self.total_messages:,}")
+        table.add_row("Total Batches", f"{self.total_batches:,}")
+        table.add_row("Throughput", f"{self.throughput:.1f} msg/s")
+        table.add_row("Avg Batch Time", f"{self.avg_batch_time*1000:.0f} ms")
+
+        # Lag
+        if self.current_lag is not None:
+            table.add_row("Remaining (lag)", f"{self.current_lag:,}")
+            eta = self.eta_seconds
+            if eta is not None and eta > 0:
+                table.add_row("ETA", _fmt_duration(eta))
+            processed_pct = 0
+            if self.initial_lag and self.initial_lag > 0:
+                processed_pct = (1 - self.current_lag / (self.initial_lag + self.total_messages)) * 100
+            table.add_row("Progress", f"{processed_pct:.1f}%")
+
+        # Per-source breakdown
+        table.add_section()
+        table.add_row("[bold]Source", "[bold]Rows / Time")
+        for src in sorted(self.source_counts):
+            count = self.source_counts[src]
+            ms = self.source_time_ms.get(src, 0)
+            table.add_row(f"  {src}", f"{count:,} / {ms:.0f}ms")
+
+        console.print(table)
+
+
+def _fmt_duration(seconds: float) -> str:
+    if seconds < 60:
+        return f"{seconds:.0f}s"
+    m, s = divmod(int(seconds), 60)
+    if m < 60:
+        return f"{m}m {s}s"
+    h, m = divmod(m, 60)
+    return f"{h}h {m}m {s}s"
+
+
+# ══════════════════════════════════════════════════════════════
+# Column Definitions (unchanged from v4 schema)
+# ══════════════════════════════════════════════════════════════
 
 # ──────────────────────────────────────────────────────────────
 # SBDB Upsert — 63 columns (object + orbit + elements + phys + discovery)
@@ -95,27 +237,18 @@ SBDB_COLUMNS = [
     "row_hash",
 ]
 
-
-def upsert_sbdb(cur, asteroid_id: str, data: dict):
-    data["asteroid_id"] = asteroid_id
-    data["row_hash"] = compute_hash(data)
-    vals = [data.get(c) for c in SBDB_COLUMNS]
-    placeholders = ",".join(["%s"] * len(SBDB_COLUMNS))
-    updates = ",".join(f"{c}=EXCLUDED.{c}" for c in SBDB_COLUMNS if c != "asteroid_id")
-    sql = f"""
-        INSERT INTO neo_agency_sbdb ({','.join(SBDB_COLUMNS)})
-        VALUES ({placeholders})
-        ON CONFLICT (asteroid_id) DO UPDATE SET {updates}
-    """
-    cur.execute(sql, vals)
+_SBDB_PLACEHOLDERS = ",".join(["%s"] * len(SBDB_COLUMNS))
+_SBDB_UPDATES = ",".join(f"{c}=EXCLUDED.{c}" for c in SBDB_COLUMNS if c != "asteroid_id")
+_SBDB_SQL = f"""
+    INSERT INTO neo_agency_sbdb ({','.join(SBDB_COLUMNS)})
+    VALUES %s
+    ON CONFLICT (asteroid_id) DO UPDATE SET {_SBDB_UPDATES}
+"""
+_SBDB_TEMPLATE = f"({_SBDB_PLACEHOLDERS})"
 
 
 # ──────────────────────────────────────────────────────────────
 # Sentry Upsert — 26 columns
-# summary: des, fullname, method, ip, ts_max, ps_cum, ps_max, n_imp,
-#          v_inf, v_imp, energy, mass, diameter, h, first_obs, last_obs,
-#          darc, nobs, ndel, ndop, nsat, pdate, cdate
-# watchlist extras: id (→sentry_id), range(→impact_date_range), last_obs_jd
 # ──────────────────────────────────────────────────────────────
 
 SENTRY_COLUMNS = [
@@ -130,26 +263,18 @@ SENTRY_COLUMNS = [
     "row_hash",
 ]
 
-
-def upsert_sentry(cur, asteroid_id: str, data: dict):
-    data["asteroid_id"] = asteroid_id
-    data["row_hash"] = compute_hash(data)
-    vals = [data.get(c) for c in SENTRY_COLUMNS]
-    placeholders = ",".join(["%s"] * len(SENTRY_COLUMNS))
-    updates = ",".join(f"{c}=EXCLUDED.{c}" for c in SENTRY_COLUMNS if c != "asteroid_id")
-    sql = f"""
-        INSERT INTO neo_agency_sentry ({','.join(SENTRY_COLUMNS)})
-        VALUES ({placeholders})
-        ON CONFLICT (asteroid_id) DO UPDATE SET {updates}
-    """
-    cur.execute(sql, vals)
+_SENTRY_PLACEHOLDERS = ",".join(["%s"] * len(SENTRY_COLUMNS))
+_SENTRY_UPDATES = ",".join(f"{c}=EXCLUDED.{c}" for c in SENTRY_COLUMNS if c != "asteroid_id")
+_SENTRY_SQL = f"""
+    INSERT INTO neo_agency_sentry ({','.join(SENTRY_COLUMNS)})
+    VALUES %s
+    ON CONFLICT (asteroid_id) DO UPDATE SET {_SENTRY_UPDATES}
+"""
+_SENTRY_TEMPLATE = f"({_SENTRY_PLACEHOLDERS})"
 
 
 # ──────────────────────────────────────────────────────────────
 # CAD Upsert — 16 columns (14 API fields + approach_date + body)
-# API fields: des, orbit_id, jd, cd(→approach_datetime+approach_date),
-#   dist, dist_min, dist_max, v_rel, v_inf, t_sigma_f, h,
-#   diameter, diameter_sigma, fullname
 # ──────────────────────────────────────────────────────────────
 
 CAD_COLUMNS = [
@@ -162,29 +287,18 @@ CAD_COLUMNS = [
     "row_hash",
 ]
 
-
-def upsert_cad(cur, asteroid_id: str, records: list[dict]):
-    if not records:
-        return
-    for rec in records:
-        rec["asteroid_id"] = asteroid_id
-        rec["row_hash"] = compute_hash(rec)
-
-    placeholders = ",".join(["%s"] * len(CAD_COLUMNS))
-    updates = ",".join(f"{c}=EXCLUDED.{c}" for c in CAD_COLUMNS if c not in ("asteroid_id", "approach_date"))
-    sql = f"""
-        INSERT INTO neo_agency_cad ({','.join(CAD_COLUMNS)})
-        VALUES %s
-        ON CONFLICT (asteroid_id, approach_date) DO UPDATE SET {updates}
-    """
-    template = f"({placeholders})"
-    values = [tuple(rec.get(c) for c in CAD_COLUMNS) for rec in records]
-    psycopg2.extras.execute_values(cur, sql, values, template=template)
+_CAD_PLACEHOLDERS = ",".join(["%s"] * len(CAD_COLUMNS))
+_CAD_UPDATES = ",".join(f"{c}=EXCLUDED.{c}" for c in CAD_COLUMNS if c not in ("asteroid_id", "approach_date"))
+_CAD_SQL = f"""
+    INSERT INTO neo_agency_cad ({','.join(CAD_COLUMNS)})
+    VALUES %s
+    ON CONFLICT (asteroid_id, approach_date) DO UPDATE SET {_CAD_UPDATES}
+"""
+_CAD_TEMPLATE = f"({_CAD_PLACEHOLDERS})"
 
 
 # ──────────────────────────────────────────────────────────────
 # ESA Upsert — 14 columns matching v4 schema
-# Parsed from pipe-delimited file
 # ──────────────────────────────────────────────────────────────
 
 ESA_COLUMNS = [
@@ -195,24 +309,18 @@ ESA_COLUMNS = [
     "row_hash",
 ]
 
-
-def upsert_esa(cur, asteroid_id: str, data: dict):
-    data["asteroid_id"] = asteroid_id
-    data["row_hash"] = compute_hash(data)
-    vals = [data.get(c) for c in ESA_COLUMNS]
-    placeholders = ",".join(["%s"] * len(ESA_COLUMNS))
-    updates = ",".join(f"{c}=EXCLUDED.{c}" for c in ESA_COLUMNS if c != "asteroid_id")
-    sql = f"""
-        INSERT INTO neo_agency_esa ({','.join(ESA_COLUMNS)})
-        VALUES ({placeholders})
-        ON CONFLICT (asteroid_id) DO UPDATE SET {updates}
-    """
-    cur.execute(sql, vals)
+_ESA_PLACEHOLDERS = ",".join(["%s"] * len(ESA_COLUMNS))
+_ESA_UPDATES = ",".join(f"{c}=EXCLUDED.{c}" for c in ESA_COLUMNS if c != "asteroid_id")
+_ESA_SQL = f"""
+    INSERT INTO neo_agency_esa ({','.join(ESA_COLUMNS)})
+    VALUES %s
+    ON CONFLICT (asteroid_id) DO UPDATE SET {_ESA_UPDATES}
+"""
+_ESA_TEMPLATE = f"({_ESA_PLACEHOLDERS})"
 
 
 # ──────────────────────────────────────────────────────────────
 # Fireball Upsert — 9 columns (all API fields)
-# API fields: date, energy, impact-e, lat, lat-dir, lon, lon-dir, alt, vel
 # ──────────────────────────────────────────────────────────────
 
 FIREBALL_COLUMNS = [
@@ -223,90 +331,198 @@ FIREBALL_COLUMNS = [
     "row_hash",
 ]
 
+_FIREBALL_PLACEHOLDERS = ",".join(["%s"] * len(FIREBALL_COLUMNS))
+_FIREBALL_UPDATES = ",".join(f"{c}=EXCLUDED.{c}" for c in FIREBALL_COLUMNS if c != "event_date")
+_FIREBALL_SQL = f"""
+    INSERT INTO neo_fireball_events ({','.join(FIREBALL_COLUMNS)})
+    VALUES %s
+    ON CONFLICT (event_date) DO UPDATE SET {_FIREBALL_UPDATES}
+"""
+_FIREBALL_TEMPLATE = f"({_FIREBALL_PLACEHOLDERS})"
 
-def upsert_fireballs(cur, records: list[dict]):
-    if not records:
-        return
-    for rec in records:
-        rec["row_hash"] = compute_hash(rec)
 
-    placeholders = ",".join(["%s"] * len(FIREBALL_COLUMNS))
-    updates = ",".join(f"{c}=EXCLUDED.{c}" for c in FIREBALL_COLUMNS if c != "event_date")
-    sql = f"""
-        INSERT INTO neo_fireball_events ({','.join(FIREBALL_COLUMNS)})
-        VALUES %s
-        ON CONFLICT (event_date) DO UPDATE SET {updates}
+# ══════════════════════════════════════════════════════════════
+# Batch Processing — ALL sources use execute_values
+# ══════════════════════════════════════════════════════════════
+
+def process_batch(payloads: list[dict]) -> tuple[dict[str, int], dict[str, float]]:
     """
-    template = f"({placeholders})"
-    values = [tuple(rec.get(c) for c in FIREBALL_COLUMNS) for rec in records]
-    psycopg2.extras.execute_values(cur, sql, values, template=template)
+    Process a batch of parsed JSON payloads using a single DB connection.
 
+    Groups all records by source and batch-upserts each table once,
+    instead of per-message individual inserts.
 
-# ──────────────────────────────────────────────────────────────
-# Main Consumer Loop
-# ──────────────────────────────────────────────────────────────
-
-def process_batch(payloads: list[dict]):
-    """Process a batch of parsed JSON payloads using a single DB connection."""
+    Returns:
+        (source_counts, source_timings_ms) for progress tracking.
+    """
     if not payloads:
-        return
+        return {}, {}
+
+    # ── Collect all rows per source across the entire batch ──
+    sbdb_rows: list[tuple] = []
+    sentry_rows: list[tuple] = []
+    cad_rows: list[tuple] = []
+    esa_rows: list[tuple] = []
+    fireball_rows: list[tuple] = []
+
+    for payload in payloads:
+        asteroid_id = payload.get("asteroid_id")
+        if not asteroid_id:
+            continue
+
+        agencies = payload.get("agencies", {})
+
+        # SBDB
+        sbdb = agencies.get("sbdb")
+        if sbdb:
+            sbdb["asteroid_id"] = asteroid_id
+            sbdb["row_hash"] = compute_hash(sbdb)
+            sbdb_rows.append(tuple(sbdb.get(c) for c in SBDB_COLUMNS))
+
+        # Sentry
+        sentry = agencies.get("sentry")
+        if sentry:
+            sentry["asteroid_id"] = asteroid_id
+            sentry["row_hash"] = compute_hash(sentry)
+            sentry_rows.append(tuple(sentry.get(c) for c in SENTRY_COLUMNS))
+
+        # CAD (list of records)
+        cad = agencies.get("cad")
+        if isinstance(cad, list) and cad:
+            for rec in cad:
+                rec["asteroid_id"] = asteroid_id
+                rec["row_hash"] = compute_hash(rec)
+                cad_rows.append(tuple(rec.get(c) for c in CAD_COLUMNS))
+
+        # ESA
+        esa = agencies.get("esa")
+        if esa:
+            esa["asteroid_id"] = asteroid_id
+            esa["row_hash"] = compute_hash(esa)
+            esa_rows.append(tuple(esa.get(c) for c in ESA_COLUMNS))
+
+        # Fireball (list of records)
+        fireballs = agencies.get("fireball")
+        if isinstance(fireballs, list) and fireballs:
+            for rec in fireballs:
+                rec["row_hash"] = compute_hash(rec)
+                fireball_rows.append(tuple(rec.get(c) for c in FIREBALL_COLUMNS))
+
+    # ── Execute all batch upserts in one connection ──
+    source_counts: dict[str, int] = {}
+    source_timings: dict[str, float] = {}
 
     with db_connection() as conn:
         with conn.cursor() as cur:
-            for payload in payloads:
-                asteroid_id = payload.get("asteroid_id")
-                if not asteroid_id:
-                    continue
+            if sbdb_rows:
+                t0 = time.monotonic()
+                psycopg2.extras.execute_values(cur, _SBDB_SQL, sbdb_rows, template=_SBDB_TEMPLATE, page_size=200)
+                source_timings["sbdb"] = (time.monotonic() - t0) * 1000
+                source_counts["sbdb"] = len(sbdb_rows)
 
-                agencies = payload.get("agencies", {})
+            if sentry_rows:
+                t0 = time.monotonic()
+                psycopg2.extras.execute_values(cur, _SENTRY_SQL, sentry_rows, template=_SENTRY_TEMPLATE, page_size=200)
+                source_timings["sentry"] = (time.monotonic() - t0) * 1000
+                source_counts["sentry"] = len(sentry_rows)
 
-                sbdb = agencies.get("sbdb")
-                if sbdb:
-                    upsert_sbdb(cur, asteroid_id, sbdb)
+            if cad_rows:
+                t0 = time.monotonic()
+                # CAD can be huge — chunk into pages of 500
+                psycopg2.extras.execute_values(cur, _CAD_SQL, cad_rows, template=_CAD_TEMPLATE, page_size=500)
+                source_timings["cad"] = (time.monotonic() - t0) * 1000
+                source_counts["cad"] = len(cad_rows)
 
-                sentry = agencies.get("sentry")
-                if sentry:
-                    upsert_sentry(cur, asteroid_id, sentry)
+            if esa_rows:
+                t0 = time.monotonic()
+                psycopg2.extras.execute_values(cur, _ESA_SQL, esa_rows, template=_ESA_TEMPLATE, page_size=200)
+                source_timings["esa"] = (time.monotonic() - t0) * 1000
+                source_counts["esa"] = len(esa_rows)
 
-                cad = agencies.get("cad")
-                if isinstance(cad, list) and cad:
-                    upsert_cad(cur, asteroid_id, cad)
-
-                esa = agencies.get("esa")
-                if esa:
-                    upsert_esa(cur, asteroid_id, esa)
-
-                fireballs = agencies.get("fireball")
-                if isinstance(fireballs, list) and fireballs:
-                    upsert_fireballs(cur, fireballs)
+            if fireball_rows:
+                t0 = time.monotonic()
+                psycopg2.extras.execute_values(cur, _FIREBALL_SQL, fireball_rows, template=_FIREBALL_TEMPLATE, page_size=200)
+                source_timings["fireball"] = (time.monotonic() - t0) * 1000
+                source_counts["fireball"] = len(fireball_rows)
 
         conn.commit()
 
-    logger.info(f"Processed batch of {len(payloads)} agency records.")
+    return source_counts, source_timings
 
+
+# ══════════════════════════════════════════════════════════════
+# Kafka Lag Helpers
+# ══════════════════════════════════════════════════════════════
+
+def get_consumer_lag(consumer: KafkaConsumer) -> int | None:
+    """Calculate total consumer lag across all assigned partitions."""
+    try:
+        partitions = consumer.assignment()
+        if not partitions:
+            return None
+
+        end_offsets = consumer.end_offsets(partitions)
+        total_lag = 0
+        for tp in partitions:
+            end = end_offsets.get(tp, 0)
+            current = consumer.position(tp)
+            lag = max(0, end - current)
+            total_lag += lag
+        return total_lag
+    except Exception as e:
+        logger.debug(f"Lag check failed: {e}")
+        return None
+
+
+# ══════════════════════════════════════════════════════════════
+# Main Consumer Loop
+# ══════════════════════════════════════════════════════════════
 
 def main():
+    console.rule("[pipeline]Agency Processor[/]")
     logger.info(f"Starting agency processor (topic={AGENCY_TOPIC}, group={CONSUMER_GROUP})")
+    logger.info(f"Config: poll_max={POLL_MAX_RECORDS}, poll_timeout={POLL_TIMEOUT_MS}ms, progress_interval={PROGRESS_INTERVAL}s")
 
     consumer = KafkaConsumer(
         AGENCY_TOPIC,
         bootstrap_servers=Config.KAFKA_BOOTSTRAP_SERVERS,
         group_id=CONSUMER_GROUP,
         auto_offset_reset="earliest",
-        enable_auto_commit=True,
+        enable_auto_commit=False,        # Manual commit for backpressure control
         value_deserializer=None,
-        fetch_max_bytes=5242880,  # Max 5MB per poll to prevent Python OOM
+        fetch_max_bytes=5242880,          # Max 5MB per poll to prevent Python OOM
+        max_poll_interval_ms=600000,      # 10 minutes — allow slow batches
+        fetch_min_bytes=32768,            # Wait for 32KB before responding (batch accumulation)
+        fetch_max_wait_ms=3000,           # Max wait 3s for batch accumulation
+        max_partition_fetch_bytes=1048576, # 1MB per partition
     )
 
     logger.info("Agency processor connected. Waiting for messages...")
 
+    tracker = ProgressTracker()
+
+    # Initial lag check (wait for partition assignment)
+    consumer.poll(timeout_ms=1000)  # trigger assignment
+    initial_lag = get_consumer_lag(consumer)
+    if initial_lag is not None:
+        tracker.update_lag(initial_lag)
+        logger.info(f"[bold cyan]Initial Kafka lag: {initial_lag:,} messages[/]")
+    else:
+        logger.info("Could not determine initial lag (partitions not yet assigned)")
+
     try:
         while True:
-            # Poll for a batch of messages (up to 500)
-            msg_pack = consumer.poll(timeout_ms=1000, max_records=500)
+            msg_pack = consumer.poll(timeout_ms=POLL_TIMEOUT_MS, max_records=POLL_MAX_RECORDS)
             if not msg_pack:
+                # Idle — check lag and report if interval elapsed
+                if tracker.should_report() and tracker.total_messages > 0:
+                    lag = get_consumer_lag(consumer)
+                    if lag is not None:
+                        tracker.update_lag(lag)
+                    tracker.report()
                 continue
 
+            # ── Deserialize messages ──
             payloads = []
             for tp, messages in msg_pack.items():
                 for message in messages:
@@ -316,12 +532,44 @@ def main():
                     except (json.JSONDecodeError, UnicodeDecodeError) as e:
                         logger.warning(f"Skipping malformed message: {e}")
 
-            if payloads:
-                process_batch(payloads)
+            if not payloads:
+                consumer.commit()
+                continue
+
+            # ── Process batch with timing ──
+            batch_start = time.monotonic()
+            source_counts, source_timings = process_batch(payloads)
+            batch_time = time.monotonic() - batch_start
+
+            # ── Commit offsets after successful processing ──
+            consumer.commit()
+
+            # ── Record metrics ──
+            tracker.record_batch(len(payloads), batch_time, source_counts, source_timings)
+
+            # Per-batch log line — only log every Nth batch to reduce spam
+            if tracker.total_batches % LOG_EVERY_N_BATCHES == 0 or len(payloads) > 50:
+                src_summary = " | ".join(f"{k}={v}" for k, v in sorted(source_counts.items()))
+                logger.info(
+                    f"Batch #{tracker.total_batches}: {len(payloads)} msgs in {batch_time*1000:.0f}ms "
+                    f"({tracker.throughput:.1f} msg/s) [{src_summary}]"
+                )
+
+            # ── Periodic detailed report ──
+            if tracker.should_report():
+                lag = get_consumer_lag(consumer)
+                if lag is not None:
+                    tracker.update_lag(lag)
+                tracker.report()
 
     except KeyboardInterrupt:
         logger.info("Agency processor shutting down.")
     finally:
+        # Final report
+        if tracker.total_messages > 0:
+            console.rule("[pipeline]Final Summary[/]")
+            tracker.report()
+
         consumer.close()
         global _pool
         if _pool and not _pool.closed:

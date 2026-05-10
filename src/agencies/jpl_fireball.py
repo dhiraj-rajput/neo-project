@@ -15,13 +15,14 @@ _float = safe_float
 
 class FireballClient(BaseClient):
 
-    def __init__(self, http_client=None, semaphore=None):
+    def __init__(self, http_client=None, semaphore=None, rate_limiter=None):
         super().__init__(
             name="JPL_Fireball",
             base_url="https://ssd-api.jpl.nasa.gov",
-            rate_limit=0.3,
+            rate_limit=0.1,
             http_client=http_client,
             semaphore=semaphore,
+            rate_limiter=rate_limiter,
         )
 
     async def fetch(self, limit: int = 100) -> list[dict]:

@@ -1,10 +1,18 @@
 """
 JPL Small-Body Database (SBDB) Client
 
-Extracts EVERY field from the SBDB API response — no stripping.
-Verified against live API hit on asteroid 99942 (Apophis).
+Two fetch modes:
+  1. fetch() / fetch_with_status() — per-asteroid via sbdb.api (full profile)
+  2. fetch_bulk_orbital() — bulk via sbdb_query.api (orbital/physical fields for ALL NEOs)
 
-API docs: https://ssd-api.jpl.nasa.gov/doc/sbdb.html
+The bulk mode uses sbdb_query.api to fetch key orbital & physical fields
+for all NEOs in a single request, eliminating ~20K per-asteroid calls.
+Per-asteroid fetch is still available for fields not in sbdb_query
+(discovery info, model params, etc.).
+
+API docs:
+  sbdb.api:       https://ssd-api.jpl.nasa.gov/doc/sbdb.html
+  sbdb_query.api: https://ssd-api.jpl.nasa.gov/doc/sbdb_query.html
 """
 
 import json
@@ -14,17 +22,152 @@ from src.logger import logger
 _float = safe_float
 _int = safe_int
 
+# Fields to fetch in bulk query — covers most of what we store in neo_agency_sbdb
+SBDB_BULK_FIELDS = ",".join([
+    "spkid", "full_name", "pdes", "name", "kind", "neo", "pha",
+    "orbit_id", "class",
+    "epoch", "e", "a", "q", "ad", "i", "om", "w", "ma", "tp", "per", "n",
+    "moid", "moid_jup", "t_jup", "condition_code", "data_arc",
+    "n_obs_used", "n_del_obs_used", "n_dop_obs_used", "rms",
+    "first_obs", "last_obs",
+    "H", "G", "diameter", "albedo", "rot_per",
+])
+
 
 class SBDBClient(BaseClient):
 
-    def __init__(self, http_client=None, semaphore=None):
+    def __init__(self, http_client=None, semaphore=None, rate_limiter=None):
         super().__init__(
             name="JPL_SBDB",
             base_url="https://ssd-api.jpl.nasa.gov",
-            rate_limit=0.3,
+            rate_limit=0.1,
             http_client=http_client,
             semaphore=semaphore,
+            rate_limiter=rate_limiter,
         )
+
+    # ── Bulk Fetch (sbdb_query.api) ───────────────────────────
+
+    async def fetch_bulk_orbital(self) -> dict[str, dict]:
+        """
+        Fetch orbital & physical data for ALL NEOs in ONE API call
+        using sbdb_query.api.
+
+        Returns dict keyed by primary designation: {pdes: parsed_dict}.
+        """
+        logger.info("[SBDB] Fetching bulk orbital data for all NEOs via sbdb_query.api...")
+
+        data = await self._get("/sbdb_query.api", params={
+            "fields": SBDB_BULK_FIELDS,
+            "sb-kind": "a",        # asteroids only
+            "sb-ns": "n",          # numbered only (for speed — unnumbered fetched per-asteroid)
+            "sb-neo": "1",         # NEOs only
+        })
+
+        if not data or "data" not in data:
+            logger.warning("[SBDB] Bulk query returned no data")
+            return {}
+
+        fields = data.get("fields", [])
+        results: dict[str, dict] = {}
+
+        for row in data["data"]:
+            entry = dict(zip(fields, row))
+            pdes = entry.get("pdes", "")
+            if not pdes:
+                continue
+
+            # Parse orbit class
+            oc = entry.get("class", "")
+
+            parsed = {
+                "designation": pdes,
+                "fullname": entry.get("full_name"),
+                "shortname": None,
+                "spkid": entry.get("spkid"),
+                "object_kind": entry.get("kind"),
+                "prefix": None,
+                "orbit_class": oc,
+                "orbit_class_name": None,  # Not available in query API
+                "orbit_id": entry.get("orbit_id"),
+                "is_neo": bool(entry.get("neo")),
+                "is_pha": bool(entry.get("pha")),
+                "des_alt": None,
+
+                # Orbital elements
+                "epoch_tdb": entry.get("epoch"),
+                "cov_epoch": None,
+                "equinox": "J2000",
+                "orbit_source": None,
+                "producer": None,
+                "soln_date": None,
+                "pe_used": None,
+                "sb_used": None,
+                "two_body": None,
+                "comment": None,
+                "not_valid_before": None,
+                "not_valid_after": None,
+
+                "eccentricity": _float(entry.get("e")),
+                "semi_major_axis_au": _float(entry.get("a")),
+                "perihelion_dist_au": _float(entry.get("q")),
+                "aphelion_dist_au": _float(entry.get("ad")),
+                "inclination_deg": _float(entry.get("i")),
+                "long_asc_node_deg": _float(entry.get("om")),
+                "arg_perihelion_deg": _float(entry.get("w")),
+                "mean_anomaly_deg": _float(entry.get("ma")),
+                "time_perihelion_tdb": entry.get("tp"),
+                "orbital_period_days": _float(entry.get("per")),
+                "mean_motion_deg_d": _float(entry.get("n")),
+
+                "moid_au": _float(entry.get("moid")),
+                "moid_jup": _float(entry.get("moid_jup")),
+                "t_jup": _float(entry.get("t_jup")),
+                "condition_code": entry.get("condition_code"),
+                "data_arc_days": _int(entry.get("data_arc")),
+                "n_obs_used": _int(entry.get("n_obs_used")),
+                "n_del_obs_used": _int(entry.get("n_del_obs_used")),
+                "n_dop_obs_used": _int(entry.get("n_dop_obs_used")),
+                "rms": _float(entry.get("rms")),
+
+                "first_obs_date": entry.get("first_obs"),
+                "last_obs_date": entry.get("last_obs"),
+
+                "model_pars": None,
+
+                "absolute_magnitude_h": _float(entry.get("H")),
+                "magnitude_slope_g": _float(entry.get("G")),
+                "diameter_km": _float(entry.get("diameter")),
+                "albedo": _float(entry.get("albedo")),
+                "rotation_period_h": _float(entry.get("rot_per")),
+                "thermal_inertia": None,
+                "spectral_type": None,
+
+                # Discovery fields — not available in bulk
+                "discovery_date": None,
+                "discovery_site": None,
+                "discovery_location": None,
+                "discovery_who": None,
+                "discovery_name": None,
+                "discovery_ref": None,
+                "discovery_cref": None,
+                "discovery_text": None,
+                "discovery_citation": None,
+            }
+
+            results[pdes] = parsed
+            # Also index by spkid for cross-referencing
+            if entry.get("spkid"):
+                results[entry["spkid"]] = parsed
+            # Index by name
+            name = entry.get("name", "")
+            if name:
+                results[name.lower()] = parsed
+
+        logger.info(f"[SBDB] Bulk query: {len(data['data'])} NEOs loaded")
+        return results
+
+    # ── Per-Asteroid Fetch (sbdb.api) ─────────────────────────
 
     async def fetch(self, designation: str) -> dict | None:
         """
@@ -169,4 +312,3 @@ class SBDBClient(BaseClient):
         }
 
         return result
-

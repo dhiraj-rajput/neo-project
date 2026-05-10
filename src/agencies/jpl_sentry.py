@@ -5,10 +5,15 @@ Extracts EVERY field from the Sentry API response.
 Verified against live API: summary table has 14 fields per entry,
 mode O has 23 summary fields + 6 VI-data fields.
 
+Performance:
+  fetch_all_active() uses Sentry mode S to get ALL active objects in 1 call.
+  This is then cached as a lookup dict so per-asteroid checks are instant.
+
 API docs: https://ssd-api.jpl.nasa.gov/doc/sentry.html
 """
 
-from src.agencies.base import BaseClient, safe_float, safe_int
+import re
+from src.agencies.base import BaseClient, FetchStatus, safe_float, safe_int
 from src.logger import logger
 
 _float = safe_float
@@ -17,14 +22,133 @@ _int = safe_int
 
 class SentryClient(BaseClient):
 
-    def __init__(self, http_client=None, semaphore=None):
+    def __init__(self, http_client=None, semaphore=None, rate_limiter=None):
         super().__init__(
             name="JPL_Sentry",
             base_url="https://ssd-api.jpl.nasa.gov",
-            rate_limit=0.3,
+            rate_limit=0.1,
             http_client=http_client,
             semaphore=semaphore,
+            rate_limiter=rate_limiter,
         )
+        # Bulk cache: populated by fetch_all_active()
+        self._active_cache: dict[str, dict] | None = None
+        self._removed_cache: set[str] | None = None
+
+    # ── Bulk Fetch (1 request for ALL objects) ─────────────────
+
+    async def fetch_all_active(self) -> dict[str, dict]:
+        """
+        Fetch ALL active Sentry objects in ONE API call (mode S).
+        Returns dict keyed by normalised designation.
+
+        This replaces ~20,000 per-asteroid Sentry API calls with 1.
+        """
+        logger.info("[Sentry] Fetching full active watchlist (mode S)...")
+        data = await self._get("/sentry.api")
+
+        cache: dict[str, dict] = {}
+        if not data or "data" not in data:
+            logger.warning("[Sentry] Bulk fetch returned no data")
+            self._active_cache = cache
+            return cache
+
+        for entry in data["data"]:
+            des = entry.get("des", "")
+            norm = _normalise(des)
+
+            record = {
+                "status": "active",
+                "designation": des,
+                "fullname": entry.get("fullname"),
+                "sentry_id": entry.get("id"),
+                "method": None,
+
+                "impact_probability": _float(entry.get("ip")),
+                "torino_scale": _int(entry.get("ts_max")),
+                "palermo_scale_cum": _float(entry.get("ps_cum")),
+                "palermo_scale_max": _float(entry.get("ps_max")),
+                "n_impacts": _int(entry.get("n_imp")),
+                "impact_date_range": entry.get("range"),
+
+                "v_infinity_km_s": _float(entry.get("v_inf")),
+                "v_impact_km_s": None,
+                "energy_mt": None,
+                "mass_kg": None,
+                "diameter_km": _float(entry.get("diameter")),
+                "h_mag": _float(entry.get("h")),
+
+                "first_obs": None,
+                "last_obs": entry.get("last_obs"),
+                "last_obs_jd": entry.get("last_obs_jd"),
+                "arc_days": None,
+                "n_obs": None,
+                "n_del": None,
+                "n_dop": None,
+                "n_sat": None,
+
+                "pdate": None,
+                "cdate": None,
+                "removed_date": None,
+            }
+
+            cache[norm] = record
+            # Also store numbered designation for cross-referencing
+            if des.isdigit():
+                cache[des] = record
+
+        self._active_cache = cache
+        logger.info(f"[Sentry] Loaded {len(data['data'])} active objects into cache")
+        return cache
+
+    async def fetch_all_removed(self) -> set[str]:
+        """
+        Fetch ALL removed Sentry objects in ONE API call (mode R).
+        Returns set of normalised designations.
+        """
+        logger.info("[Sentry] Fetching removed objects list...")
+        data = await self._get("/sentry.api", params={"removed": "1"})
+
+        removed: set[str] = set()
+        if not data or "data" not in data:
+            self._removed_cache = removed
+            return removed
+
+        for entry in data["data"]:
+            des = entry.get("des", "")
+            removed.add(_normalise(des))
+
+        self._removed_cache = removed
+        logger.info(f"[Sentry] Loaded {len(removed)} removed designations")
+        return removed
+
+    def lookup(self, designation: str) -> dict | None:
+        """
+        Instant cache lookup — no API call needed.
+        Must call fetch_all_active() first.
+        """
+        if self._active_cache is None:
+            return None
+
+        norm = _normalise(designation)
+        entry = self._active_cache.get(norm)
+        if entry:
+            return entry
+
+        # Try fuzzy: numeric part only
+        num_match = re.match(r"^(\d+)", designation.strip())
+        if num_match:
+            return self._active_cache.get(num_match.group(1))
+
+        return None
+
+    def is_removed(self, designation: str) -> bool:
+        """Check if a designation was removed from Sentry."""
+        if self._removed_cache is None:
+            return False
+        return _normalise(designation) in self._removed_cache
+
+    # ── Per-Object Fetch (kept for detailed mode O data) ──────
 
     async def fetch(self, designation: str) -> dict | None:
         """
@@ -146,3 +270,12 @@ class SentryClient(BaseClient):
         logger.info(f"Sentry watchlist: {len(results)} active objects")
         return results
 
+
+# ── Helpers ───────────────────────────────────────────────────
+
+def _normalise(designation: str) -> str:
+    """Normalise designation for cache lookups."""
+    s = designation.strip()
+    s = re.sub(r"[()']", "", s)
+    s = re.sub(r"\s+", " ", s)
+    return s.lower().strip()

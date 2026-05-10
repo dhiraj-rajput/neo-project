@@ -87,7 +87,7 @@ services:
     volumes:
       - ./frontend:/app
     ports:
-      - "3000:3000"
+      - "8080:3000"
     command: sh -c "bun install && bun run dev --hostname 0.0.0.0"
     depends_on:
       - neo-api

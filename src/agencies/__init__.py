@@ -5,7 +5,7 @@ Each module wraps one external API with correct parameters,
 error handling, and response parsing per official documentation.
 """
 
-from src.agencies.base import BaseClient
+from src.agencies.base import BaseClient, TokenBucketRateLimiter
 from src.agencies.jpl_sbdb import SBDBClient
 from src.agencies.jpl_sentry import SentryClient
 from src.agencies.jpl_cad import CADClient
@@ -14,6 +14,7 @@ from src.agencies.esa_neocc import ESAClient
 
 __all__ = [
     "BaseClient",
+    "TokenBucketRateLimiter",
     "SBDBClient",
     "SentryClient",
     "CADClient",

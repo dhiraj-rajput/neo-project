@@ -118,7 +118,7 @@ Recommended order is consumers first, then producers. That way Kafka messages ar
 ## Open The Apps
 
 - Frontend 3D app: `http://localhost:3000`
-- Grafana dashboard: `http://localhost:3001`
+- Grafana dashboard: `http://localhost:3100`
 - FastAPI docs: `http://localhost:8000/docs`
 - API health check: `http://localhost:8000/health`
 
@@ -193,7 +193,7 @@ AGENCY_SENTRY_SEED_LIMIT=500
 AGENCY_NOT_FOUND_HOLD_DAYS=30
 NEOWS_NOT_FOUND_HOLD_DAYS=30
 
-GRAFANA_PORT=3001
+GRAFANA_PORT=3100
 NEXT_PUBLIC_API_URL=http://localhost:8000
 ```
 
