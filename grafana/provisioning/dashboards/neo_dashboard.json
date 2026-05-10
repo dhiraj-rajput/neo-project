@@ -617,7 +617,7 @@
             "uid": "TimescaleDB"
           },
           "format": "table",
-          "rawSql": "SELECT WIDTH_BUCKET(palermo_scale_cum, -10, 0, 20) AS bucket, ROUND(((WIDTH_BUCKET(palermo_scale_cum, -10, 0, 20) - 1) * 0.5 - 10)::numeric, 1) ::text AS palermo_scale, COUNT(*) AS count FROM neo_agency_sentry WHERE status='active' AND palermo_scale_cum IS NOT NULL GROUP BY bucket ORDER BY bucket",
+          "rawSql": "SELECT WIDTH_BUCKET(palermo_scale_cum, -10, 0, 20) AS bucket, ROUND(((WIDTH_BUCKET(palermo_scale_cum, -10, 0, 20) - 1) * 0.5 - 10)::numeric, 1) ::text AS palermo_scale, COUNT(*) AS count FROM neo_agency_sentry WHERE palermo_scale_cum IS NOT NULL GROUP BY bucket ORDER BY bucket",
           "refId": "A"
         }
       ],
@@ -651,19 +651,11 @@
       },
       "id": 12,
       "options": {
-        "displayLabels": [
-          "percent"
-        ],
         "legend": {
-          "calcs": [],
-          "displayMode": "table",
-          "placement": "right",
-          "showLegend": true,
-          "values": [
-            "value"
-          ]
-        },
-        "pieType": "pie"
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        }
       },
       "targets": [
         {
@@ -672,12 +664,12 @@
             "uid": "TimescaleDB"
           },
           "format": "table",
-          "rawSql": "SELECT CASE WHEN torino_scale = 0 THEN '0 - Normal' WHEN torino_scale = 1 THEN '1 - Normal (merits monitoring)' WHEN torino_scale BETWEEN 2 AND 4 THEN '2-4 - Meriting attention' WHEN torino_scale BETWEEN 5 AND 7 THEN '5-7 - Threatening' WHEN torino_scale BETWEEN 8 AND 10 THEN '8-10 - Certain Collision' ELSE 'Unknown' END AS category, COUNT(*) AS count FROM neo_agency_sentry WHERE status='active' GROUP BY category ORDER BY category",
+          "rawSql": "SELECT CASE WHEN torino_scale = 0 THEN '0 - Normal' WHEN torino_scale = 1 THEN '1 - Normal (merits monitoring)' WHEN torino_scale BETWEEN 2 AND 4 THEN '2-4 - Meriting attention' WHEN torino_scale BETWEEN 5 AND 7 THEN '5-7 - Threatening' WHEN torino_scale BETWEEN 8 AND 10 THEN '8-10 - Certain Collision' ELSE 'Unknown' END AS \"Torino Scale\", COUNT(*) AS \"Count\" FROM neo_agency_sentry WHERE torino_scale IS NOT NULL GROUP BY \"Torino Scale\" ORDER BY \"Torino Scale\"",
           "refId": "A"
         }
       ],
       "title": "Torino Scale Distribution",
-      "type": "piechart"
+      "type": "barchart"
     },
     {
       "collapsed": false,
@@ -1009,20 +1001,11 @@
       },
       "id": 40,
       "options": {
-        "displayLabels": [
-          "name",
-          "percent"
-        ],
         "legend": {
-          "calcs": [],
-          "displayMode": "table",
-          "placement": "right",
-          "showLegend": true,
-          "values": [
-            "value"
-          ]
-        },
-        "pieType": "donut"
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        }
       },
       "targets": [
         {
@@ -1036,7 +1019,7 @@
         }
       ],
       "title": "Orbit Class Distribution",
-      "type": "piechart"
+      "type": "barchart"
     },
     {
       "datasource": {
@@ -1075,7 +1058,7 @@
             "uid": "TimescaleDB"
           },
           "format": "table",
-          "rawSql": "SELECT WIDTH_BUCKET(moid_au, 0, 0.1, 20) AS bucket, ROUND((WIDTH_BUCKET(moid_au,0,0.1,20)-1)*0.005::numeric,3) ::text AS moid_au, COUNT(*) AS count FROM neo_agency_sbdb WHERE moid_au IS NOT NULL AND moid_au < 0.1 GROUP BY bucket ORDER BY bucket",
+          "rawSql": "SELECT ROUND((WIDTH_BUCKET(moid_au, 0, 0.1, 10) - 1) * 0.01::numeric, 2)::text AS \"MOID Range (AU)\", COUNT(*) AS \"Count\" FROM neo_agency_sbdb WHERE moid_au IS NOT NULL AND moid_au < 0.1 GROUP BY WIDTH_BUCKET(moid_au, 0, 0.1, 10) ORDER BY WIDTH_BUCKET(moid_au, 0, 0.1, 10)",
           "refId": "A"
         }
       ],
@@ -1307,7 +1290,7 @@
             "uid": "TimescaleDB"
           },
           "format": "time_series",
-          "rawSql": "SELECT ingestion_time AS \"time\", COUNT(*) AS \"Records Ingested\" FROM neo_agency_sbdb WHERE ingestion_time BETWEEN $__timeFrom() AND $__timeTo() GROUP BY date_trunc('hour', ingestion_time) ORDER BY 1",
+          "rawSql": "SELECT date_trunc('hour', ingestion_time) AS \"time\", COUNT(*) AS \"Records Ingested\" FROM neo_agency_sbdb WHERE ingestion_time BETWEEN $__timeFrom() AND $__timeTo() GROUP BY 1 ORDER BY 1",
           "refId": "A"
         }
       ],
@@ -1517,20 +1500,11 @@
       },
       "id": 303,
       "options": {
-        "displayLabels": [
-          "name",
-          "percent"
-        ],
         "legend": {
-          "calcs": [],
-          "displayMode": "table",
-          "placement": "right",
-          "showLegend": true,
-          "values": [
-            "value"
-          ]
-        },
-        "pieType": "donut"
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        }
       },
       "targets": [
         {
@@ -1539,12 +1513,12 @@
             "uid": "TimescaleDB"
           },
           "format": "table",
-          "rawSql": "SELECT CASE WHEN cnt >= 3 THEN '3+ agencies' WHEN cnt = 2 THEN '2 agencies' ELSE '1 agency only' END AS coverage, COUNT(*) AS count FROM (SELECT n.asteroid_id, (CASE WHEN s.asteroid_id IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN sen.asteroid_id IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN e.asteroid_id IS NOT NULL THEN 1 ELSE 0 END) AS cnt FROM (SELECT DISTINCT asteroid_id FROM neo_close_approaches) n LEFT JOIN neo_agency_sbdb s ON s.asteroid_id = n.asteroid_id LEFT JOIN neo_agency_sentry sen ON sen.asteroid_id = n.asteroid_id LEFT JOIN neo_agency_esa e ON e.asteroid_id = n.asteroid_id) sub GROUP BY 1 ORDER BY 1 DESC",
+          "rawSql": "SELECT CASE WHEN cnt >= 3 THEN '3+ agencies' WHEN cnt = 2 THEN '2 agencies' ELSE '1 agency only' END AS \"Coverage\", COUNT(*) AS \"Count\" FROM (SELECT n.asteroid_id, (CASE WHEN s.asteroid_id IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN sen.asteroid_id IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN e.asteroid_id IS NOT NULL THEN 1 ELSE 0 END) AS cnt FROM (SELECT DISTINCT asteroid_id FROM neo_close_approaches) n LEFT JOIN neo_agency_sbdb s ON s.asteroid_id = n.asteroid_id LEFT JOIN neo_agency_sentry sen ON sen.asteroid_id = n.asteroid_id LEFT JOIN neo_agency_esa e ON e.asteroid_id = n.asteroid_id) sub GROUP BY 1 ORDER BY 1 DESC",
           "refId": "A"
         }
       ],
       "title": "Multi-Agency Coverage per Object",
-      "type": "piechart"
+      "type": "barchart"
     },
     {
       "datasource": {
@@ -1624,14 +1598,12 @@
       },
       "id": 311,
       "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "single"
-        }
+        "sortBy": [
+          {
+            "displayName": "a (AU)",
+            "desc": false
+          }
+        ]
       },
       "targets": [
         {
@@ -1640,12 +1612,12 @@
             "uid": "TimescaleDB"
           },
           "format": "table",
-          "rawSql": "SELECT semi_major_axis_au AS \"a (AU)\", eccentricity AS \"e\", CASE WHEN is_pha THEN 'PHA' ELSE 'Non-PHA' END AS \"series\", fullname AS \"Object\" FROM neo_agency_sbdb WHERE semi_major_axis_au IS NOT NULL AND eccentricity IS NOT NULL AND semi_major_axis_au < 5",
+          "rawSql": "SELECT fullname AS \"Object\", semi_major_axis_au AS \"a (AU)\", eccentricity AS \"e\", CASE WHEN is_pha THEN 'PHA' ELSE 'Non-PHA' END AS \"Class\" FROM neo_agency_sbdb WHERE semi_major_axis_au IS NOT NULL AND eccentricity IS NOT NULL AND semi_major_axis_au < 5 ORDER BY 2",
           "refId": "A"
         }
       ],
-      "title": "Semi-Major Axis vs Eccentricity (a-e Diagram)",
-      "type": "xychart"
+      "title": "Semi-Major Axis vs Eccentricity (Data)",
+      "type": "table"
     },
     {
       "datasource": {
@@ -1684,7 +1656,7 @@
             "uid": "TimescaleDB"
           },
           "format": "table",
-          "rawSql": "SELECT ROUND(t_jup::numeric, 1) ::text AS t_jup, COUNT(*) AS count FROM neo_agency_sbdb WHERE t_jup IS NOT NULL AND t_jup BETWEEN 2 AND 7 GROUP BY 1 ORDER BY 1",
+          "rawSql": "SELECT TO_CHAR(ROUND(t_jup::numeric * 2) / 2, 'FM990.0') AS \"Tisserand Parameter\", COUNT(*) AS \"Count\" FROM neo_agency_sbdb WHERE t_jup IS NOT NULL AND t_jup BETWEEN 2 AND 7 GROUP BY ROUND(t_jup::numeric * 2) / 2 ORDER BY ROUND(t_jup::numeric * 2) / 2",
           "refId": "A"
         }
       ],
@@ -1882,11 +1854,12 @@
       },
       "id": 331,
       "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true
-        }
+        "sortBy": [
+          {
+            "displayName": "Energy (kt)",
+            "desc": true
+          }
+        ]
       },
       "targets": [
         {
@@ -1895,12 +1868,12 @@
             "uid": "TimescaleDB"
           },
           "format": "table",
-          "rawSql": "SELECT velocity_km_s AS \"Velocity (km/s)\", impact_energy_kt AS \"Energy (kt)\", event_date::text AS \"Date\" FROM neo_fireball_events WHERE velocity_km_s IS NOT NULL AND impact_energy_kt IS NOT NULL",
+          "rawSql": "SELECT event_date::text AS \"Date\", velocity_km_s AS \"Velocity (km/s)\", impact_energy_kt AS \"Energy (kt)\" FROM neo_fireball_events WHERE velocity_km_s IS NOT NULL AND impact_energy_kt IS NOT NULL ORDER BY 3 DESC",
           "refId": "A"
         }
       ],
-      "title": "Fireball Energy vs Entry Velocity",
-      "type": "xychart"
+      "title": "Fireball Energy vs Entry Velocity (Data)",
+      "type": "table"
     },
     {
       "datasource": {
@@ -2019,56 +1992,9 @@
       ],
       "title": "Data Freshness (Hours Since Last Ingestion)",
       "type": "stat"
-    },
-    {
-      "datasource": {
-        "type": "postgres",
-        "uid": "TimescaleDB"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "fillOpacity": 10,
-            "lineWidth": 2
-          }
-        }
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 24,
-        "x": 0,
-        "y": 176
-      },
-      "id": 342,
-      "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "multi"
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "postgres",
-            "uid": "TimescaleDB"
-          },
-          "format": "time_series",
-          "rawSql": "SELECT time_bucket('1 day', ingestion_time) AS \"time\", 'SBDB' AS metric, COUNT(*) AS \"value\" FROM neo_agency_sbdb WHERE ingestion_time BETWEEN $__timeFrom() AND $__timeTo() GROUP BY 1 UNION ALL SELECT time_bucket('1 day', ingestion_time), 'CAD', COUNT(*) FROM neo_agency_cad WHERE ingestion_time BETWEEN $__timeFrom() AND $__timeTo() GROUP BY 1 UNION ALL SELECT time_bucket('1 day', ingestion_time), 'NeoWs', COUNT(*) FROM neo_close_approaches WHERE ingestion_time BETWEEN $__timeFrom() AND $__timeTo() GROUP BY 1 ORDER BY 1",
-          "refId": "A"
-        }
-      ],
-      "title": "Daily Ingestion Throughput by Source",
-      "type": "timeseries"
     }
   ],
-  "refresh": "5m",
+  "refresh": "1m",
   "schemaVersion": 38,
   "tags": [
     "neo",
@@ -2099,8 +2025,8 @@
     ]
   },
   "time": {
-    "from": "now-1y",
-    "to": "now+6M"
+    "from": "1899-12-30T00:00:00.000Z",
+    "to": "now"
   },
   "timepicker": {},
   "timezone": "utc",
