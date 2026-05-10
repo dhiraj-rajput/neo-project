@@ -3060,7 +3060,7 @@
       ]
     }
   ],
-  "refresh": "5m",
+  "refresh": "1m",
   "schemaVersion": 38,
   "tags": [
     "neo",
