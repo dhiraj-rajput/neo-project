@@ -33,7 +33,9 @@ class Config:
     # END_DATE defaults to today's date (computed at startup).
     AGENCY_START_DATE = os.getenv("START_DATE", "1899-12-30")
     AGENCY_END_DATE = os.getenv("END_DATE", "") or date.today().isoformat()
-    AGENCY_CAD_DIST_MAX = os.getenv("AGENCY_CAD_DIST_MAX", "0.5")
+    # Close-approach distance cutoff (AU). If unset/blank/"none", no cutoff is applied.
+    _cad_dist_raw = os.getenv("AGENCY_CAD_DIST_MAX", "0.5").strip()
+    AGENCY_CAD_DIST_MAX = None if _cad_dist_raw.lower() in ("", "none", "null", "inf", "infinite") else _cad_dist_raw
 
     # --- Rate Limiting ---
     JPL_RATE_LIMIT_DELAY = float(os.getenv("JPL_RATE_LIMIT_DELAY", "1.0"))

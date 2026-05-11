@@ -45,11 +45,11 @@ class CADClient(BaseClient):
         """
         data = await self._get("/cad.api", params={
             "des": designation,
-            "dist-max": _DIST_MAX,
             "date-min": _DATE_MIN,
             "date-max": _DATE_MAX,
             "diameter": "true",
             "fullname": "true",
+            **({} if _DIST_MAX is None else {"dist-max": _DIST_MAX}),
         })
 
         if not data or "data" not in data:
@@ -61,7 +61,7 @@ class CADClient(BaseClient):
         self,
         date_min: str = "1900-01-01",
         date_max: str = "2200-01-01",
-        dist_max: str = "0.5",
+        dist_max: str | None = "0.5",
     ) -> dict[str, list[dict]]:
         """
         Fetch ALL NEO close-approach records in a SINGLE API call.
@@ -70,17 +70,20 @@ class CADClient(BaseClient):
         This replaces 20,000 individual per-asteroid API calls with ONE.
         The CAD API without a 'des' param returns all matching records.
         """
-        logger.info(f"[CAD] Fetching bulk close-approach data "
-                     f"(dist<{dist_max} au, {date_min} to {date_max})...")
+        dist_part = "no dist cutoff" if dist_max is None else f"dist<{dist_max} au"
+        logger.info(f"[CAD] Fetching bulk close-approach data ({dist_part}, {date_min} to {date_max})...")
 
-        data = await self._get("/cad.api", params={
-            "dist-max": dist_max,
+        params = {
             "date-min": date_min,
             "date-max": date_max,
             "diameter": "true",
             "fullname": "true",
             "neo": "true",       # NEOs only
-        })
+        }
+        if dist_max is not None:
+            params["dist-max"] = dist_max
+
+        data = await self._get("/cad.api", params=params)
 
         if not data or "data" not in data:
             logger.warning("[CAD] Bulk fetch returned no data")

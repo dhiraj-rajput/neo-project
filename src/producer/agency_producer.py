@@ -53,7 +53,7 @@ from src.agencies import (
 
 AGENCY_TOPIC = os.getenv("AGENCY_TOPIC", "agency_ingest")
 BATCH_SIZE = int(os.getenv("AGENCY_BATCH_SIZE", "500"))
-CYCLE_SLEEP = int(os.getenv("AGENCY_CYCLE_SLEEP", "300"))
+CYCLE_SLEEP = int(os.getenv("AGENCY_CYCLE_SLEEP", "120"))
 MAX_CONCURRENT = int(os.getenv("AGENCY_MAX_CONCURRENT", "50"))
 
 # Rate limiter config — JPL SSD fair-use
@@ -636,7 +636,10 @@ async def run_ingestion_cycle():
 def main():
     console.rule("[pipeline]NEO Multi-Agency Data Producer (FULL BULK)")
     logger.info("Starting agency producer...")
-    logger.info(f"CAD date range: {CAD_DATE_MIN} → {CAD_DATE_MAX} (dist<{CAD_DIST_MAX} au)")
+    if CAD_DIST_MAX is None:
+        logger.info(f"CAD date range: {CAD_DATE_MIN} → {CAD_DATE_MAX} (no dist cutoff)")
+    else:
+        logger.info(f"CAD date range: {CAD_DATE_MIN} → {CAD_DATE_MAX} (dist<{CAD_DIST_MAX} au)")
     logger.info(f"SBDB rate limiter (fallback): {JPL_RATE} req/s, burst={JPL_BURST}")
     logger.info(f"Bulk cache TTL: {BULK_CACHE_TTL}s")
     logger.info(f"ALL 4 agencies use bulk fetch — per-asteroid only for SBDB cache misses")
