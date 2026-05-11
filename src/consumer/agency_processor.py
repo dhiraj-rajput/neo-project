@@ -81,6 +81,30 @@ def compute_hash(record: dict) -> str:
     return hashlib.md5(raw.encode()).hexdigest()
 
 
+def _dedupe_rows_for_upsert(
+    rows: list[tuple],
+    key_indices: tuple[int, ...],
+    label: str = "",
+) -> list[tuple]:
+    """
+    execute_values + ON CONFLICT fails if two proposed rows share the same conflict key.
+    Kafka polls can repeat the same asteroid in one batch — keep last row per key.
+    """
+    if not rows or not key_indices:
+        return rows
+    n_before = len(rows)
+    by_key: dict[tuple, tuple] = {}
+    for row in rows:
+        key = tuple(row[i] for i in key_indices)
+        by_key[key] = row
+    out = list(by_key.values())
+    if len(out) < n_before and label:
+        logger.debug(
+            f"{label}: deduped batch {n_before} -> {len(out)} rows (duplicate conflict keys in one INSERT)"
+        )
+    return out
+
+
 # ══════════════════════════════════════════════════════════════
 # Progress Tracker
 # ══════════════════════════════════════════════════════════════
@@ -408,6 +432,13 @@ def process_batch(payloads: list[dict]) -> tuple[dict[str, int], dict[str, float
                 rec["row_hash"] = compute_hash(rec)
                 fireball_rows.append(tuple(rec.get(c) for c in FIREBALL_COLUMNS))
 
+    # One INSERT … ON CONFLICT must not propose duplicate conflict keys
+    sbdb_rows = _dedupe_rows_for_upsert(sbdb_rows, (0,), "sbdb")
+    sentry_rows = _dedupe_rows_for_upsert(sentry_rows, (0,), "sentry")
+    cad_rows = _dedupe_rows_for_upsert(cad_rows, (0, 1), "cad")
+    esa_rows = _dedupe_rows_for_upsert(esa_rows, (0,), "esa")
+    fireball_rows = _dedupe_rows_for_upsert(fireball_rows, (0,), "fireball")
+
     # ── Execute all batch upserts in one connection ──
     source_counts: dict[str, int] = {}
     source_timings: dict[str, float] = {}
@@ -474,6 +505,23 @@ def get_consumer_lag(consumer: KafkaConsumer) -> int | None:
         return None
 
 
+def wait_for_partition_assignment(
+    consumer: KafkaConsumer,
+    max_wait_s: float = 30.0,
+    poll_ms: int = 500,
+) -> bool:
+    """
+    Drive the consumer until the group coordinator assigns partitions.
+    A single poll() is often not enough right after connect — rebalance is async.
+    """
+    deadline = time.monotonic() + max_wait_s
+    while time.monotonic() < deadline:
+        consumer.poll(timeout_ms=poll_ms)
+        if consumer.assignment():
+            return True
+    return False
+
+
 # ══════════════════════════════════════════════════════════════
 # Main Consumer Loop
 # ══════════════════════════════════════════════════════════════
@@ -497,18 +545,24 @@ def main():
         max_partition_fetch_bytes=1048576, # 1MB per partition
     )
 
-    logger.info("Agency processor connected. Waiting for messages...")
+    logger.info("Agency processor connected. Waiting for partition assignment...")
 
     tracker = ProgressTracker()
 
-    # Initial lag check (wait for partition assignment)
-    consumer.poll(timeout_ms=1000)  # trigger assignment
-    initial_lag = get_consumer_lag(consumer)
-    if initial_lag is not None:
-        tracker.update_lag(initial_lag)
-        logger.info(f"[bold cyan]Initial Kafka lag: {initial_lag:,} messages[/]")
+    if wait_for_partition_assignment(consumer, max_wait_s=30.0):
+        initial_lag = get_consumer_lag(consumer)
+        if initial_lag is not None:
+            tracker.update_lag(initial_lag)
+            logger.info(f"[bold cyan]Initial Kafka lag: {initial_lag:,} messages[/]")
+        else:
+            logger.info("Partitions assigned; lag not available (empty topic or broker quirk)")
     else:
-        logger.info("Could not determine initial lag (partitions not yet assigned)")
+        logger.warning(
+            "No partition assignment after 30s — group rebalance still pending or broker issue. "
+            "Lag will be reported after the first successful poll with data."
+        )
+
+    logger.info("Waiting for messages...")
 
     try:
         while True:

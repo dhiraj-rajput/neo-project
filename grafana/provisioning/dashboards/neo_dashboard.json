@@ -13,7 +13,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 0
+        "y": 54
       },
       "id": 100,
       "title": "Pipeline Overview",
@@ -43,7 +43,7 @@
         }
       },
       "gridPos": {
-        "h": 4,
+        "h": 3,
         "w": 4,
         "x": 0,
         "y": 1
@@ -99,7 +99,7 @@
         }
       },
       "gridPos": {
-        "h": 4,
+        "h": 3,
         "w": 4,
         "x": 4,
         "y": 1
@@ -155,7 +155,7 @@
         }
       },
       "gridPos": {
-        "h": 4,
+        "h": 3,
         "w": 4,
         "x": 8,
         "y": 1
@@ -219,7 +219,7 @@
         }
       },
       "gridPos": {
-        "h": 4,
+        "h": 3,
         "w": 4,
         "x": 12,
         "y": 1
@@ -275,7 +275,7 @@
         }
       },
       "gridPos": {
-        "h": 4,
+        "h": 3,
         "w": 4,
         "x": 16,
         "y": 1
@@ -331,7 +331,7 @@
         }
       },
       "gridPos": {
-        "h": 4,
+        "h": 3,
         "w": 4,
         "x": 20,
         "y": 1
@@ -369,7 +369,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 5
+        "y": 58
       },
       "id": 101,
       "title": "Data Freshness & Coverage",
@@ -411,10 +411,10 @@
         }
       },
       "gridPos": {
-        "h": 5,
+        "h": 6,
         "w": 8,
         "x": 0,
-        "y": 6
+        "y": 5
       },
       "id": 7,
       "options": {
@@ -453,10 +453,10 @@
         }
       },
       "gridPos": {
-        "h": 5,
+        "h": 6,
         "w": 8,
         "x": 8,
-        "y": 6
+        "y": 5
       },
       "id": 8,
       "options": {
@@ -495,10 +495,10 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 5,
+        "h": 6,
         "w": 8,
         "x": 16,
-        "y": 6
+        "y": 5
       },
       "id": 9,
       "options": {
@@ -527,7 +527,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 11
+        "y": 65
       },
       "id": 102,
       "title": "NeoWs Trends",
@@ -550,7 +550,7 @@
         }
       },
       "gridPos": {
-        "h": 8,
+        "h": 9,
         "w": 12,
         "x": 0,
         "y": 12
@@ -596,7 +596,7 @@
         }
       },
       "gridPos": {
-        "h": 8,
+        "h": 9,
         "w": 12,
         "x": 12,
         "y": 12
@@ -631,10 +631,10 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 20
+        "y": 75
       },
       "id": 103,
-      "title": "JPL Sentry — Impact Risk",
+      "title": "JPL Sentry \u2014 Impact Risk",
       "type": "row"
     },
     {
@@ -674,10 +674,10 @@
         }
       },
       "gridPos": {
-        "h": 5,
+        "h": 6,
         "w": 4,
         "x": 0,
-        "y": 21
+        "y": 22
       },
       "id": 12,
       "options": {
@@ -739,10 +739,10 @@
         }
       },
       "gridPos": {
-        "h": 5,
+        "h": 6,
         "w": 4,
         "x": 4,
-        "y": 21
+        "y": 22
       },
       "id": 13,
       "options": {
@@ -791,10 +791,10 @@
         }
       },
       "gridPos": {
-        "h": 5,
+        "h": 6,
         "w": 4,
         "x": 8,
-        "y": 21
+        "y": 22
       },
       "id": 14,
       "options": {
@@ -809,7 +809,7 @@
         "graphMode": "none",
         "justifyMode": "center"
       },
-      "title": "Total Watchlist Energy",
+      "title": "Total Watch List",
       "type": "stat",
       "targets": [
         {
@@ -818,7 +818,7 @@
             "uid": "TimescaleDB"
           },
           "format": "table",
-          "rawSql": "SELECT ROUND(SUM(energy_mt)::numeric,1) AS \"Energy (MT)\" FROM neo_agency_sentry WHERE status='active'",
+          "rawSql": "SELECT COUNT(*) AS \"Watch List\" FROM neo_agency_sentry WHERE status='active'",
           "refId": "A"
         }
       ]
@@ -837,10 +837,10 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 5,
-        "w": 4,
+        "h": 6,
+        "w": 6,
         "x": 12,
-        "y": 21
+        "y": 22
       },
       "id": 15,
       "options": {
@@ -870,7 +870,7 @@
             "uid": "TimescaleDB"
           },
           "format": "table",
-          "rawSql": "SELECT status AS \"Status\", COUNT(*) AS \"Count\" FROM neo_agency_sentry GROUP BY 1",
+          "rawSql": "SELECT 'active' AS \"Status\", COUNT(*) FILTER (WHERE status='active') AS \"Count\" FROM neo_agency_sentry UNION ALL SELECT 'removed' AS \"Status\", COUNT(*) FILTER (WHERE status='removed') AS \"Count\" FROM neo_agency_sentry",
           "refId": "A"
         }
       ]
@@ -895,10 +895,10 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 5,
-        "w": 4,
-        "x": 16,
-        "y": 21
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 28
       },
       "id": 16,
       "options": {
@@ -912,8 +912,8 @@
         "tooltip": {
           "mode": "single"
         },
-        "xTickLabelRotation": -45,
-        "xTickLabelSpacing": 0
+        "xTickLabelRotation": 0,
+        "xTickLabelSpacing": 100
       },
       "title": "Palermo Distribution",
       "type": "barchart",
@@ -924,7 +924,7 @@
             "uid": "TimescaleDB"
           },
           "format": "table",
-          "rawSql": "SELECT\n  ROUND((palermo_scale_cum::numeric / 0.5)::integer * 0.5, 1)::text AS \"Palermo Bin\",\n  COUNT(*) AS \"Count\"\nFROM neo_agency_sentry\nWHERE palermo_scale_cum IS NOT NULL AND status = 'active'\nGROUP BY ROUND((palermo_scale_cum::numeric / 0.5)::integer * 0.5, 1)\nORDER BY ROUND((palermo_scale_cum::numeric / 0.5)::integer * 0.5, 1)",
+          "rawSql": "SELECT\n  ROUND((palermo_scale_cum::numeric / 1.0)::integer * 1.0, 1)::text AS \"Palermo Bin\",\n  COUNT(*) AS \"Count\"\nFROM neo_agency_sentry\nWHERE palermo_scale_cum IS NOT NULL AND status = 'active'\nGROUP BY ROUND((palermo_scale_cum::numeric / 1.0)::integer * 1.0, 1)\nORDER BY ROUND((palermo_scale_cum::numeric / 1.0)::integer * 1.0, 1)",
           "refId": "A"
         }
       ]
@@ -943,10 +943,10 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 5,
-        "w": 4,
-        "x": 20,
-        "y": 21
+        "h": 6,
+        "w": 6,
+        "x": 18,
+        "y": 22
       },
       "id": 17,
       "options": {
@@ -976,7 +976,7 @@
             "uid": "TimescaleDB"
           },
           "format": "table",
-          "rawSql": "SELECT CASE WHEN torino_scale=0 THEN '0-Normal' WHEN torino_scale=1 THEN '1-Monitor' WHEN torino_scale BETWEEN 2 AND 4 THEN '2-4 Attention' WHEN torino_scale>=5 THEN '5+ Threat' ELSE 'Unknown' END AS \"Level\", COUNT(*) AS \"Count\"\nFROM neo_agency_sentry WHERE torino_scale IS NOT NULL GROUP BY 1 ORDER BY 1",
+          "rawSql": "SELECT CASE WHEN torino_scale=0 THEN '0-Normal' WHEN torino_scale=1 THEN '1-Monitor' WHEN torino_scale BETWEEN 2 AND 4 THEN '2-4 Attention' WHEN torino_scale>=5 THEN '5+ Threat' ELSE 'Unknown' END AS \"Level\", COUNT(*) AS \"Count\"\nFROM neo_agency_sentry WHERE torino_scale IS NOT NULL AND status='active' GROUP BY 1 ORDER BY 1",
           "refId": "A"
         }
       ]
@@ -1049,7 +1049,7 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 26
+        "y": 36
       },
       "id": 18,
       "options": {
@@ -1078,7 +1078,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 36
+        "y": 100
       },
       "id": 104,
       "title": "ESA NEOCC Risk List",
@@ -1140,7 +1140,7 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 37
+        "y": 47
       },
       "id": 19,
       "options": {
@@ -1158,7 +1158,7 @@
             "uid": "TimescaleDB"
           },
           "format": "table",
-          "rawSql": "SELECT esa_designation AS \"Designation\", esa_name AS \"Name\", ROUND(diameter_m::numeric,0) AS \"Diam (m)\", CASE WHEN diameter_certain THEN '✓' ELSE '~' END AS \"Certain\", vi_date AS \"VI Date\", ip_max AS \"IP Max\", ps_max AS \"PS Max\", ts AS \"TS\", ROUND(vel_km_s::numeric,1) AS \"Vel\", years AS \"Years\", ip_cum AS \"IP Cum\", ps_cum AS \"PS Cum\"\nFROM neo_agency_esa WHERE on_risk_list=TRUE ORDER BY ps_max DESC NULLS LAST LIMIT 50",
+          "rawSql": "SELECT esa_designation AS \"Designation\", esa_name AS \"Name\", ROUND(diameter_m::numeric,0) AS \"Diam (m)\", CASE WHEN diameter_certain THEN '\u2713' ELSE '~' END AS \"Certain\", vi_date AS \"VI Date\", ip_max AS \"IP Max\", ps_max AS \"PS Max\", ts AS \"TS\", ROUND(vel_km_s::numeric,1) AS \"Vel\", years AS \"Years\", ip_cum AS \"IP Cum\", ps_cum AS \"PS Cum\"\nFROM neo_agency_esa WHERE on_risk_list=TRUE ORDER BY ps_max DESC NULLS LAST LIMIT 50",
           "refId": "A"
         }
       ]
@@ -1169,7 +1169,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 47
+        "y": 111
       },
       "id": 105,
       "title": "Cross-Agency Analysis",
@@ -1186,7 +1186,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "Δ PS"
+              "options": "\u0394 PS"
             },
             "properties": [
               {
@@ -1228,10 +1228,10 @@
         ]
       },
       "gridPos": {
-        "h": 10,
+        "h": 9,
         "w": 24,
         "x": 0,
-        "y": 48
+        "y": 58
       },
       "id": 20,
       "options": {
@@ -1249,7 +1249,7 @@
             "uid": "TimescaleDB"
           },
           "format": "table",
-          "rawSql": "SELECT s.designation AS \"Object\", ROUND(s.palermo_scale_cum::numeric,2) AS \"JPL PS\", ROUND(e.ps_cum::numeric,2) AS \"ESA PS\", ROUND((s.palermo_scale_cum - e.ps_cum)::numeric,2) AS \"Δ PS\", s.torino_scale AS \"JPL TS\", e.ts AS \"ESA TS\", ROUND(s.diameter_km::numeric,3) AS \"JPL Diam (km)\", ROUND((e.diameter_m/1000.0)::numeric,3) AS \"ESA Diam (km)\", ROUND(ABS(s.diameter_km - e.diameter_m/1000.0)::numeric,3) AS \"Δ Diam\", s.impact_date_range AS \"JPL Years\", e.years AS \"ESA Years\" FROM neo_agency_sentry s JOIN neo_agency_esa e ON LOWER(e.esa_designation) = LOWER(s.designation) WHERE s.status = 'active' AND e.on_risk_list = TRUE ORDER BY s.palermo_scale_cum DESC NULLS LAST LIMIT 50",
+          "rawSql": "SELECT s.designation AS \"Object\", ROUND(s.palermo_scale_cum::numeric,2) AS \"JPL PS\", ROUND(e.ps_cum::numeric,2) AS \"ESA PS\", ROUND((s.palermo_scale_cum - e.ps_cum)::numeric,2) AS \"\u0394 PS\", s.torino_scale AS \"JPL TS\", e.ts AS \"ESA TS\", ROUND(s.diameter_km::numeric,3) AS \"JPL Diam (km)\", ROUND((e.diameter_m/1000.0)::numeric,3) AS \"ESA Diam (km)\", ROUND(ABS(s.diameter_km - e.diameter_m/1000.0)::numeric,3) AS \"\u0394 Diam\", s.impact_date_range AS \"JPL Years\", e.years AS \"ESA Years\" FROM neo_agency_sentry s JOIN neo_agency_esa e ON LOWER(e.esa_designation) = LOWER(s.designation) WHERE s.status = 'active' AND e.on_risk_list = TRUE ORDER BY s.palermo_scale_cum DESC NULLS LAST LIMIT 50",
           "refId": "A"
         }
       ]
@@ -1267,8 +1267,9 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 58
+        "y": 67
       },
+      "description": "ESA risk list entries with no matching active Sentry object by designation. Empty means every ESA risk object has a Sentry counterpart or the ESA table has no on-list rows.",
       "id": 21,
       "options": {
         "sortBy": [],
@@ -1303,8 +1304,9 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 58
+        "y": 67
       },
+      "description": "Active Sentry objects with no matching ESA risk-list row by designation. Empty means every active Sentry entry has a counterpart on the ESA risk list (or there are no active Sentry rows).",
       "id": 22,
       "options": {
         "sortBy": [],
@@ -1321,7 +1323,7 @@
             "uid": "TimescaleDB"
           },
           "format": "table",
-          "rawSql": "SELECT s.designation AS \"Object\", s.palermo_scale_cum AS \"PS Cum\", s.torino_scale AS \"TS\", s.n_impacts AS \"Impacts\", s.impact_date_range AS \"Years\", ROUND(s.diameter_km::numeric,3) AS \"Diam (km)\"\nFROM neo_agency_sentry s LEFT JOIN neo_agency_esa e ON LOWER(e.esa_designation)=LOWER(s.designation) AND e.on_risk_list=TRUE WHERE s.status='active' AND e.asteroid_id IS NULL ORDER BY s.palermo_scale_cum DESC NULLS LAST LIMIT 30",
+          "rawSql": "SELECT s.designation AS \"Object\", s.palermo_scale_cum AS \"PS Cum\", s.torino_scale AS \"TS\", s.n_impacts AS \"Impacts\", s.impact_date_range AS \"Years\", ROUND(s.diameter_km::numeric,3) AS \"Diam (km)\"\nFROM neo_agency_sentry s\nWHERE s.status = 'active'\n  AND NOT EXISTS (\n    SELECT 1 FROM neo_agency_esa e\n    WHERE e.on_risk_list = TRUE\n      AND LOWER(e.esa_designation) = LOWER(s.designation)\n  )\nORDER BY s.palermo_scale_cum DESC NULLS LAST\nLIMIT 30",
           "refId": "A"
         }
       ]
@@ -1336,10 +1338,10 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 9,
+        "h": 8,
         "w": 24,
         "x": 0,
-        "y": 66
+        "y": 75
       },
       "id": 23,
       "options": {
@@ -1357,7 +1359,7 @@
             "uid": "TimescaleDB"
           },
           "format": "table",
-          "rawSql": "SELECT s.fullname AS \"Object\", ROUND(s.diameter_km::numeric, 3) AS \"SBDB (km)\", ROUND(n.diam_max::numeric, 3) AS \"NeoWs Est (km)\", ROUND(ABS(s.diameter_km - n.diam_max)::numeric, 3) AS \"Δ (km)\", ROUND((ABS(s.diameter_km - n.diam_max) / NULLIF(s.diameter_km, 0) * 100)::numeric, 1) AS \"Δ%\", s.orbit_class_name AS \"Class\", s.albedo AS \"Albedo\" FROM neo_agency_sbdb s JOIN (SELECT DISTINCT ON (asteroid_id) asteroid_id,   estimated_diameter_km_max::numeric AS diam_max   FROM neo_close_approaches   ORDER BY asteroid_id, close_approach_date DESC) n ON n.asteroid_id = s.asteroid_id WHERE s.diameter_km IS NOT NULL AND n.diam_max IS NOT NULL ORDER BY ABS(s.diameter_km - n.diam_max) DESC LIMIT 30",
+          "rawSql": "SELECT s.fullname AS \"Object\", ROUND(s.diameter_km::numeric, 3) AS \"SBDB (km)\", ROUND(n.diam_max::numeric, 3) AS \"NeoWs Est (km)\", ROUND(ABS(s.diameter_km - n.diam_max)::numeric, 3) AS \"\u0394 (km)\", ROUND((ABS(s.diameter_km - n.diam_max) / NULLIF(s.diameter_km, 0) * 100)::numeric, 1) AS \"\u0394%\", s.orbit_class_name AS \"Class\", s.albedo AS \"Albedo\" FROM neo_agency_sbdb s JOIN (SELECT DISTINCT ON (asteroid_id) asteroid_id,   estimated_diameter_km_max::numeric AS diam_max   FROM neo_close_approaches   ORDER BY asteroid_id, close_approach_date DESC) n ON n.asteroid_id = s.asteroid_id WHERE s.diameter_km IS NOT NULL AND n.diam_max IS NOT NULL ORDER BY ABS(s.diameter_km - n.diam_max) DESC LIMIT 30",
           "refId": "A"
         }
       ]
@@ -1382,7 +1384,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 75
+        "y": 83
       },
       "id": 24,
       "options": {
@@ -1421,7 +1423,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 75
+        "y": 83
       },
       "id": 25,
       "options": {
@@ -1439,7 +1441,7 @@
             "uid": "TimescaleDB"
           },
           "format": "table",
-          "rawSql": "SELECT s.fullname AS \"Object\", s.palermo_scale_cum AS \"Palermo\", c.approach_date AS \"Next Approach\", ROUND(c.distance_au::numeric,6) AS \"Dist (AU)\", ROUND(c.v_rel_km_s::numeric,2) AS \"V Rel\"\nFROM neo_agency_sentry s JOIN LATERAL (SELECT approach_date, distance_au, v_rel_km_s FROM neo_agency_cad WHERE asteroid_id=s.asteroid_id AND approach_date>=CURRENT_DATE ORDER BY approach_date LIMIT 1) c ON TRUE WHERE s.status='active' ORDER BY c.approach_date LIMIT 30",
+          "rawSql": "SELECT s.fullname AS \"Object\", s.palermo_scale_cum AS \"Palermo\", c.approach_date AS \"Next Approach\", ROUND(c.distance_au::numeric,6) AS \"Dist (AU)\", ROUND(c.v_rel_km_s::numeric,2) AS \"V Rel\"\nFROM neo_agency_sentry s JOIN LATERAL (SELECT approach_date, distance_au, v_rel_km_s FROM neo_agency_cad WHERE asteroid_id=s.asteroid_id AND approach_date>='1899-12-30' ORDER BY approach_date LIMIT 1) c ON TRUE WHERE s.status='active' ORDER BY c.approach_date LIMIT 30",
           "refId": "A"
         }
       ]
@@ -1483,10 +1485,10 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 7,
+        "h": 8,
         "w": 12,
         "x": 0,
-        "y": 83
+        "y": 91
       },
       "id": 26,
       "options": {
@@ -1530,10 +1532,10 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 7,
+        "h": 8,
         "w": 12,
         "x": 12,
-        "y": 83
+        "y": 91
       },
       "id": 27,
       "options": {
@@ -1551,7 +1553,7 @@
             "uid": "TimescaleDB"
           },
           "format": "table",
-          "rawSql": "SELECT s.fullname AS \"Object\", ROUND(sb.moid_au::numeric,6) AS \"MOID (AU)\", s.palermo_scale_cum AS \"Palermo\", s.torino_scale AS \"TS\", sb.orbit_class_name AS \"Class\", ROUND(sb.eccentricity::numeric,4) AS \"e\", ROUND(sb.inclination_deg::numeric,2) AS \"i (°)\"\nFROM neo_agency_sentry s JOIN neo_agency_sbdb sb ON sb.asteroid_id=s.asteroid_id WHERE s.status='active' AND sb.moid_au IS NOT NULL ORDER BY sb.moid_au ASC LIMIT 20",
+          "rawSql": "SELECT s.fullname AS \"Object\", ROUND(sb.moid_au::numeric,6) AS \"MOID (AU)\", s.palermo_scale_cum AS \"Palermo\", s.torino_scale AS \"TS\", sb.orbit_class_name AS \"Class\", ROUND(sb.eccentricity::numeric,4) AS \"e\", ROUND(sb.inclination_deg::numeric,2) AS \"i (\u00b0)\"\nFROM neo_agency_sentry s JOIN neo_agency_sbdb sb ON sb.asteroid_id=s.asteroid_id WHERE s.status='active' AND sb.moid_au IS NOT NULL ORDER BY sb.moid_au ASC LIMIT 20",
           "refId": "A"
         }
       ]
@@ -1576,7 +1578,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 90
+        "y": 99
       },
       "id": 28,
       "options": {
@@ -1615,7 +1617,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 90
+        "y": 99
       },
       "id": 29,
       "options": {
@@ -1644,10 +1646,10 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 98
+        "y": 161
       },
       "id": 106,
-      "title": "JPL CAD — Close Approaches",
+      "title": "JPL CAD Close Approaches",
       "type": "row"
     },
     {
@@ -1660,10 +1662,10 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 10,
+        "h": 9,
         "w": 24,
         "x": 0,
-        "y": 99
+        "y": 108
       },
       "id": 30,
       "options": {
@@ -1706,7 +1708,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 109
+        "y": 117
       },
       "id": 31,
       "options": {
@@ -1752,7 +1754,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 109
+        "y": 117
       },
       "id": 32,
       "options": {
@@ -1791,7 +1793,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 117
+        "y": 125
       },
       "id": 33,
       "options": {
@@ -1837,10 +1839,11 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 117
+        "y": 125
       },
       "id": 34,
       "options": {
+        "orientation": "horizontal",
         "barWidth": 0.97,
         "groupWidth": 1.0,
         "stacking": "none",
@@ -1851,8 +1854,8 @@
         "tooltip": {
           "mode": "single"
         },
-        "xTickLabelRotation": -45,
-        "xTickLabelSpacing": 0
+        "xTickLabelRotation": 0,
+        "xTickLabelSpacing": 100
       },
       "title": "CAD Velocity Distribution",
       "type": "barchart",
@@ -1863,7 +1866,7 @@
             "uid": "TimescaleDB"
           },
           "format": "table",
-          "rawSql": "SELECT\n  (FLOOR(v_rel_km_s::numeric / 2) * 2)::text || '-' ||\n  (FLOOR(v_rel_km_s::numeric / 2) * 2 + 2)::text AS \"V Rel (km/s)\",\n  COUNT(*) AS \"Count\"\nFROM neo_agency_cad\nWHERE v_rel_km_s IS NOT NULL AND v_rel_km_s BETWEEN 0 AND 80\nGROUP BY FLOOR(v_rel_km_s::numeric / 2)\nORDER BY FLOOR(v_rel_km_s::numeric / 2)",
+          "rawSql": "SELECT\n  (FLOOR(v_rel_km_s::numeric / 4) * 4)::text || '-' ||\n  (FLOOR(v_rel_km_s::numeric / 4) * 4 + 4)::text AS \"V Rel (km/s)\",\n  COUNT(*) AS \"Count\"\nFROM neo_agency_cad\nWHERE v_rel_km_s IS NOT NULL AND v_rel_km_s BETWEEN 0 AND 80\nGROUP BY FLOOR(v_rel_km_s::numeric / 4)\nORDER BY FLOOR(v_rel_km_s::numeric / 4)",
           "refId": "A"
         }
       ]
@@ -1874,10 +1877,10 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 125
+        "y": 187
       },
       "id": 107,
-      "title": "SBDB — Orbital & Physical",
+      "title": "SBDB \u2014 Orbital & Physical",
       "type": "row"
     },
     {
@@ -1896,10 +1899,10 @@
         }
       },
       "gridPos": {
-        "h": 8,
-        "w": 8,
+        "h": 12,
+        "w": 24,
         "x": 0,
-        "y": 126
+        "y": 134
       },
       "id": 35,
       "options": {
@@ -1912,7 +1915,8 @@
         },
         "tooltip": {
           "mode": "multi"
-        }
+        },
+        "xTickLabelRotation": 0
       },
       "title": "Orbit Class Distribution",
       "type": "barchart",
@@ -1944,10 +1948,10 @@
         }
       },
       "gridPos": {
-        "h": 8,
-        "w": 8,
-        "x": 8,
-        "y": 126
+        "h": 12,
+        "w": 24,
+        "x": 0,
+        "y": 146
       },
       "id": 36,
       "options": {
@@ -1960,7 +1964,8 @@
         },
         "tooltip": {
           "mode": "multi"
-        }
+        },
+        "xTickLabelRotation": 0
       },
       "title": "PHA vs Non-PHA by Class",
       "type": "barchart",
@@ -1992,10 +1997,10 @@
         }
       },
       "gridPos": {
-        "h": 8,
-        "w": 8,
-        "x": 16,
-        "y": 126
+        "h": 12,
+        "w": 24,
+        "x": 0,
+        "y": 158
       },
       "id": 37,
       "options": {
@@ -2044,13 +2049,14 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 7,
-        "w": 8,
+        "h": 12,
+        "w": 24,
         "x": 0,
-        "y": 134
+        "y": 170
       },
       "id": 38,
       "options": {
+        "orientation": "horizontal",
         "barWidth": 0.97,
         "groupWidth": 1.0,
         "stacking": "none",
@@ -2061,8 +2067,8 @@
         "tooltip": {
           "mode": "single"
         },
-        "xTickLabelRotation": -45,
-        "xTickLabelSpacing": 0
+        "xTickLabelRotation": 0,
+        "xTickLabelSpacing": 100
       },
       "title": "MOID Distribution",
       "type": "barchart",
@@ -2073,7 +2079,7 @@
             "uid": "TimescaleDB"
           },
           "format": "table",
-          "rawSql": "SELECT\n  ROUND((FLOOR(moid_au::numeric / 0.005) * 0.005)::numeric, 3)::text AS \"MOID (AU)\",\n  COUNT(*) AS \"Count\"\nFROM neo_agency_sbdb\nWHERE moid_au IS NOT NULL AND moid_au < 0.05\nGROUP BY FLOOR(moid_au::numeric / 0.005)\nORDER BY FLOOR(moid_au::numeric / 0.005)",
+          "rawSql": "SELECT\n  ROUND((FLOOR(moid_au::numeric / 0.01) * 0.01)::numeric, 2)::text AS \"MOID (AU)\",\n  COUNT(*) AS \"Count\"\nFROM neo_agency_sbdb\nWHERE moid_au IS NOT NULL AND moid_au < 0.05\nGROUP BY FLOOR(moid_au::numeric / 0.01)\nORDER BY FLOOR(moid_au::numeric / 0.01)",
           "refId": "A"
         }
       ]
@@ -2098,13 +2104,14 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 7,
-        "w": 8,
-        "x": 8,
-        "y": 134
+        "h": 12,
+        "w": 24,
+        "x": 0,
+        "y": 182
       },
       "id": 39,
       "options": {
+        "orientation": "horizontal",
         "barWidth": 0.97,
         "groupWidth": 1.0,
         "stacking": "none",
@@ -2115,8 +2122,8 @@
         "tooltip": {
           "mode": "single"
         },
-        "xTickLabelRotation": -45,
-        "xTickLabelSpacing": 0
+        "xTickLabelRotation": 0,
+        "xTickLabelSpacing": 100
       },
       "title": "Diameter Distribution",
       "type": "barchart",
@@ -2127,7 +2134,7 @@
             "uid": "TimescaleDB"
           },
           "format": "table",
-          "rawSql": "SELECT\n  ROUND((FLOOR(diameter_km::numeric / 0.25) * 0.25)::numeric, 2)::text AS \"Diameter (km)\",\n  COUNT(*) AS \"Count\"\nFROM neo_agency_sbdb\nWHERE diameter_km IS NOT NULL AND diameter_km < 10\nGROUP BY FLOOR(diameter_km::numeric / 0.25)\nORDER BY FLOOR(diameter_km::numeric / 0.25)",
+          "rawSql": "SELECT\n  ROUND((FLOOR(diameter_km::numeric / 0.5) * 0.5)::numeric, 1)::text AS \"Diameter (km)\",\n  COUNT(*) AS \"Count\"\nFROM neo_agency_sbdb\nWHERE diameter_km IS NOT NULL AND diameter_km < 10\nGROUP BY FLOOR(diameter_km::numeric / 0.5)\nORDER BY FLOOR(diameter_km::numeric / 0.5)",
           "refId": "A"
         }
       ]
@@ -2145,10 +2152,10 @@
         }
       },
       "gridPos": {
-        "h": 7,
-        "w": 8,
-        "x": 16,
-        "y": 134
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 194
       },
       "id": 40,
       "options": {
@@ -2178,7 +2185,7 @@
             "uid": "TimescaleDB"
           },
           "format": "table",
-          "rawSql": "SELECT condition_code AS \"Code\", COUNT(*) AS \"Count\" FROM neo_agency_sbdb WHERE condition_code IS NOT NULL GROUP BY 1 ORDER BY 1",
+          "rawSql": "SELECT condition_code::text || ' - ' || CASE WHEN condition_code::text = '0' THEN 'Highly Certain' WHEN condition_code::text IN ('1','2','3') THEN 'Certain' WHEN condition_code::text IN ('4','5','6') THEN 'Moderate' WHEN condition_code::text IN ('7','8') THEN 'Uncertain' WHEN condition_code::text = '9' THEN 'Highly Uncertain' ELSE 'Unknown' END AS \"Code\", COUNT(*) AS \"Count\" FROM neo_agency_sbdb WHERE condition_code IS NOT NULL GROUP BY condition_code ORDER BY condition_code",
           "refId": "A"
         }
       ]
@@ -2193,10 +2200,10 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 8,
+        "h": 10,
         "w": 24,
         "x": 0,
-        "y": 141
+        "y": 204
       },
       "id": 41,
       "options": {
@@ -2225,7 +2232,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 149
+        "y": 214
       },
       "id": 108,
       "title": "Fireball Events",
@@ -2258,7 +2265,7 @@
         "h": 4,
         "w": 4,
         "x": 0,
-        "y": 150
+        "y": 215
       },
       "id": 42,
       "options": {
@@ -2314,7 +2321,7 @@
         "h": 4,
         "w": 4,
         "x": 4,
-        "y": 150
+        "y": 215
       },
       "id": 43,
       "options": {
@@ -2370,7 +2377,7 @@
         "h": 4,
         "w": 4,
         "x": 8,
-        "y": 150
+        "y": 215
       },
       "id": 44,
       "options": {
@@ -2416,10 +2423,10 @@
         }
       },
       "gridPos": {
-        "h": 8,
+        "h": 4,
         "w": 12,
         "x": 12,
-        "y": 150
+        "y": 215
       },
       "id": 45,
       "options": {
@@ -2461,10 +2468,10 @@
         }
       },
       "gridPos": {
-        "h": 8,
+        "h": 7,
         "w": 12,
         "x": 0,
-        "y": 154
+        "y": 219
       },
       "id": 46,
       "options": {
@@ -2503,10 +2510,10 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 8,
+        "h": 7,
         "w": 12,
         "x": 12,
-        "y": 154
+        "y": 219
       },
       "id": 47,
       "options": {
@@ -2524,7 +2531,7 @@
             "uid": "TimescaleDB"
           },
           "format": "table",
-          "rawSql": "SELECT event_date AS \"Date\", CONCAT(latitude,'° ',latitude_dir) AS \"Lat\", CONCAT(longitude,'° ',longitude_dir) AS \"Lon\", altitude_km AS \"Alt (km)\", velocity_km_s AS \"Vel\", ROUND(impact_energy_kt::numeric,3) AS \"Energy (kt)\" FROM neo_fireball_events ORDER BY impact_energy_kt DESC NULLS LAST LIMIT 20",
+          "rawSql": "SELECT event_date AS \"Date\", CONCAT(latitude,'\u00b0 ',latitude_dir) AS \"Lat\", CONCAT(longitude,'\u00b0 ',longitude_dir) AS \"Lon\", altitude_km AS \"Alt (km)\", velocity_km_s AS \"Vel\", ROUND(impact_energy_kt::numeric,3) AS \"Energy (kt)\" FROM neo_fireball_events ORDER BY impact_energy_kt DESC NULLS LAST LIMIT 20",
           "refId": "A"
         }
       ]
@@ -2550,12 +2557,13 @@
       },
       "gridPos": {
         "h": 7,
-        "w": 6,
+        "w": 8,
         "x": 0,
-        "y": 162
+        "y": 226
       },
       "id": 48,
       "options": {
+        "orientation": "horizontal",
         "barWidth": 0.97,
         "groupWidth": 1.0,
         "stacking": "none",
@@ -2566,8 +2574,8 @@
         "tooltip": {
           "mode": "single"
         },
-        "xTickLabelRotation": -45,
-        "xTickLabelSpacing": 0
+        "xTickLabelRotation": 0,
+        "xTickLabelSpacing": 100
       },
       "title": "Velocity Distribution",
       "type": "barchart",
@@ -2578,7 +2586,7 @@
             "uid": "TimescaleDB"
           },
           "format": "table",
-          "rawSql": "SELECT\n  (FLOOR(velocity_km_s::numeric / 2) * 2)::text || '-' ||\n  (FLOOR(velocity_km_s::numeric / 2) * 2 + 2)::text AS \"Vel (km/s)\",\n  COUNT(*) AS \"Count\"\nFROM neo_fireball_events\nWHERE velocity_km_s IS NOT NULL AND velocity_km_s BETWEEN 0 AND 80\nGROUP BY FLOOR(velocity_km_s::numeric / 2)\nORDER BY FLOOR(velocity_km_s::numeric / 2)",
+          "rawSql": "SELECT\n  (FLOOR(velocity_km_s::numeric / 4) * 4)::text || '-' ||\n  (FLOOR(velocity_km_s::numeric / 4) * 4 + 4)::text AS \"Vel (km/s)\",\n  COUNT(*) AS \"Count\"\nFROM neo_fireball_events\nWHERE velocity_km_s IS NOT NULL AND velocity_km_s BETWEEN 0 AND 80\nGROUP BY FLOOR(velocity_km_s::numeric / 4)\nORDER BY FLOOR(velocity_km_s::numeric / 4)",
           "refId": "A"
         }
       ]
@@ -2604,12 +2612,13 @@
       },
       "gridPos": {
         "h": 7,
-        "w": 6,
-        "x": 6,
-        "y": 162
+        "w": 8,
+        "x": 8,
+        "y": 226
       },
       "id": 49,
       "options": {
+        "orientation": "horizontal",
         "barWidth": 0.97,
         "groupWidth": 1.0,
         "stacking": "none",
@@ -2620,8 +2629,8 @@
         "tooltip": {
           "mode": "single"
         },
-        "xTickLabelRotation": -45,
-        "xTickLabelSpacing": 0
+        "xTickLabelRotation": 0,
+        "xTickLabelSpacing": 100
       },
       "title": "Altitude Distribution",
       "type": "barchart",
@@ -2632,7 +2641,7 @@
             "uid": "TimescaleDB"
           },
           "format": "table",
-          "rawSql": "SELECT\n  (FLOOR(altitude_km::numeric / 5) * 5)::text || '-' ||\n  (FLOOR(altitude_km::numeric / 5) * 5 + 5)::text AS \"Alt (km)\",\n  COUNT(*) AS \"Count\"\nFROM neo_fireball_events\nWHERE altitude_km IS NOT NULL AND altitude_km BETWEEN 0 AND 200\nGROUP BY FLOOR(altitude_km::numeric / 5)\nORDER BY FLOOR(altitude_km::numeric / 5)",
+          "rawSql": "SELECT\n  (FLOOR(altitude_km::numeric / 10) * 10)::text || '-' ||\n  (FLOOR(altitude_km::numeric / 10) * 10 + 10)::text AS \"Alt (km)\",\n  COUNT(*) AS \"Count\"\nFROM neo_fireball_events\nWHERE altitude_km IS NOT NULL AND altitude_km BETWEEN 0 AND 200\nGROUP BY FLOOR(altitude_km::numeric / 10)\nORDER BY FLOOR(altitude_km::numeric / 10)",
           "refId": "A"
         }
       ]
@@ -2648,9 +2657,9 @@
       },
       "gridPos": {
         "h": 7,
-        "w": 12,
-        "x": 12,
-        "y": 162
+        "w": 8,
+        "x": 16,
+        "y": 226
       },
       "id": 50,
       "options": {
@@ -2668,7 +2677,7 @@
             "uid": "TimescaleDB"
           },
           "format": "table",
-          "rawSql": "SELECT event_date AS \"Date\", CONCAT(latitude,'° ',latitude_dir) AS \"Lat\", CONCAT(longitude,'° ',longitude_dir) AS \"Lon\", altitude_km AS \"Alt\", velocity_km_s AS \"Vel\", ROUND(impact_energy_kt::numeric,3) AS \"Impact (kt)\" FROM neo_fireball_events ORDER BY event_date DESC LIMIT 50",
+          "rawSql": "SELECT event_date AS \"Date\", CONCAT(latitude,'\u00b0 ',latitude_dir) AS \"Lat\", CONCAT(longitude,'\u00b0 ',longitude_dir) AS \"Lon\", altitude_km AS \"Alt\", velocity_km_s AS \"Vel\", ROUND(impact_energy_kt::numeric,3) AS \"Impact (kt)\" FROM neo_fireball_events ORDER BY event_date DESC LIMIT 50",
           "refId": "A"
         }
       ]
@@ -2679,7 +2688,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 169
+        "y": 233
       },
       "id": 109,
       "title": "Discovery & Observations",
@@ -2700,14 +2709,16 @@
           }
         }
       },
+      "description": "Known MPC sites first; (no site in SBDB) counts rows where SBDB has no discovery_site (data is still loaded).",
       "gridPos": {
-        "h": 8,
+        "h": 6,
         "w": 12,
         "x": 0,
-        "y": 170
+        "y": 234
       },
       "id": 51,
       "options": {
+        "orientation": "horizontal",
         "barWidth": 0.6,
         "groupWidth": 0.7,
         "stacking": "none",
@@ -2717,7 +2728,9 @@
         },
         "tooltip": {
           "mode": "multi"
-        }
+        },
+        "xTickLabelRotation": 0,
+        "xTickLabelSpacing": 100
       },
       "title": "Top Discovery Sites",
       "type": "barchart",
@@ -2728,7 +2741,7 @@
             "uid": "TimescaleDB"
           },
           "format": "table",
-          "rawSql": "SELECT COALESCE(discovery_site,'Unknown') AS \"Site\", COUNT(*) AS \"Count\" FROM neo_agency_sbdb WHERE discovery_site IS NOT NULL GROUP BY 1 ORDER BY 2 DESC LIMIT 15",
+          "rawSql": "SELECT site AS \"Site\", cnt AS \"Count\" FROM (\n  SELECT\n    CASE WHEN discovery_site IS NULL OR BTRIM(discovery_site) = '' THEN '(no site in SBDB)'\n         ELSE BTRIM(discovery_site) END AS site,\n    COUNT(*)::bigint AS cnt\n  FROM neo_agency_sbdb\n  GROUP BY 1\n) x\nORDER BY (CASE WHEN site = '(no site in SBDB)' THEN 1 ELSE 0 END), cnt DESC\nLIMIT 12",
           "refId": "A"
         }
       ]
@@ -2753,13 +2766,14 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 8,
+        "h": 6,
         "w": 12,
         "x": 12,
-        "y": 170
+        "y": 234
       },
       "id": 52,
       "options": {
+        "orientation": "auto",
         "barWidth": 0.97,
         "groupWidth": 1.0,
         "stacking": "none",
@@ -2782,7 +2796,7 @@
             "uid": "TimescaleDB"
           },
           "format": "table",
-          "rawSql": "SELECT\n  (FLOOR(data_arc_days::numeric / 365) * 365)::text || '-' ||\n  (FLOOR(data_arc_days::numeric / 365) * 365 + 365)::text AS \"Arc (days)\",\n  COUNT(*) AS \"Count\"\nFROM neo_agency_sbdb\nWHERE data_arc_days IS NOT NULL\nGROUP BY FLOOR(data_arc_days::numeric / 365)\nORDER BY FLOOR(data_arc_days::numeric / 365)",
+          "rawSql": "SELECT\n  ((FLOOR(data_arc_days::numeric / 1825) * 5)::int)::text || '-' ||\n  (((FLOOR(data_arc_days::numeric / 1825) * 5) + 5)::int)::text || ' yr' AS \"Data arc\",\n  COUNT(*) AS \"Count\"\nFROM neo_agency_sbdb\nWHERE data_arc_days IS NOT NULL\nGROUP BY FLOOR(data_arc_days::numeric / 1825)\nORDER BY FLOOR(data_arc_days::numeric / 1825)",
           "refId": "A"
         }
       ]
@@ -2793,7 +2807,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 178
+        "y": 240
       },
       "id": 110,
       "title": "Velocity & Miss Distance",
@@ -2819,7 +2833,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 179
+        "y": 241
       },
       "id": 53,
       "options": {
@@ -2868,10 +2882,11 @@
         "h": 8,
         "w": 6,
         "x": 12,
-        "y": 179
+        "y": 241
       },
       "id": 54,
       "options": {
+        "orientation": "horizontal",
         "barWidth": 0.97,
         "groupWidth": 1.0,
         "stacking": "none",
@@ -2882,8 +2897,8 @@
         "tooltip": {
           "mode": "single"
         },
-        "xTickLabelRotation": -45,
-        "xTickLabelSpacing": 0
+        "xTickLabelRotation": 0,
+        "xTickLabelSpacing": 100
       },
       "title": "Miss Distance Distribution",
       "type": "barchart",
@@ -2894,7 +2909,7 @@
             "uid": "TimescaleDB"
           },
           "format": "table",
-          "rawSql": "SELECT\n  ROUND((FLOOR(miss_distance_astronomical::numeric / 0.01) * 0.01)::numeric, 2)::text AS \"Miss Dist (AU)\",\n  COUNT(*) AS \"Count\"\nFROM neo_close_approaches\nWHERE miss_distance_astronomical IS NOT NULL\n  AND miss_distance_astronomical::float BETWEEN 0 AND 0.5\n  AND close_approach_date BETWEEN $__timeFrom() AND $__timeTo()\nGROUP BY FLOOR(miss_distance_astronomical::numeric / 0.01)\nORDER BY FLOOR(miss_distance_astronomical::numeric / 0.01)",
+          "rawSql": "SELECT\n  ROUND((FLOOR(miss_distance_astronomical::numeric / 0.05) * 0.05)::numeric, 2)::text AS \"Miss Dist (AU)\",\n  COUNT(*) AS \"Count\"\nFROM neo_close_approaches\nWHERE miss_distance_astronomical IS NOT NULL\n  AND miss_distance_astronomical::float BETWEEN 0 AND 0.5\n  AND close_approach_date BETWEEN $__timeFrom() AND $__timeTo()\nGROUP BY FLOOR(miss_distance_astronomical::numeric / 0.05)\nORDER BY FLOOR(miss_distance_astronomical::numeric / 0.05)",
           "refId": "A"
         }
       ]
@@ -2922,10 +2937,11 @@
         "h": 8,
         "w": 6,
         "x": 18,
-        "y": 179
+        "y": 241
       },
       "id": 55,
       "options": {
+        "orientation": "horizontal",
         "barWidth": 0.97,
         "groupWidth": 1.0,
         "stacking": "none",
@@ -2936,8 +2952,8 @@
         "tooltip": {
           "mode": "single"
         },
-        "xTickLabelRotation": -45,
-        "xTickLabelSpacing": 0
+        "xTickLabelRotation": 0,
+        "xTickLabelSpacing": 100
       },
       "title": "NeoWs Velocity Distribution",
       "type": "barchart",
@@ -2948,7 +2964,7 @@
             "uid": "TimescaleDB"
           },
           "format": "table",
-          "rawSql": "SELECT\n  (FLOOR(relative_velocity_km_s::numeric / 2) * 2)::text || '-' ||\n  (FLOOR(relative_velocity_km_s::numeric / 2) * 2 + 2)::text AS \"Vel (km/s)\",\n  COUNT(*) AS \"Count\"\nFROM neo_close_approaches\nWHERE relative_velocity_km_s IS NOT NULL\n  AND relative_velocity_km_s::float BETWEEN 0 AND 80\n  AND close_approach_date BETWEEN $__timeFrom() AND $__timeTo()\nGROUP BY FLOOR(relative_velocity_km_s::numeric / 2)\nORDER BY FLOOR(relative_velocity_km_s::numeric / 2)",
+          "rawSql": "SELECT\n  (FLOOR(relative_velocity_km_s::numeric / 4) * 4)::text || '-' ||\n  (FLOOR(relative_velocity_km_s::numeric / 4) * 4 + 4)::text AS \"Vel (km/s)\",\n  COUNT(*) AS \"Count\"\nFROM neo_close_approaches\nWHERE relative_velocity_km_s IS NOT NULL\n  AND relative_velocity_km_s::float BETWEEN 0 AND 80\n  AND close_approach_date BETWEEN $__timeFrom() AND $__timeTo()\nGROUP BY FLOOR(relative_velocity_km_s::numeric / 4)\nORDER BY FLOOR(relative_velocity_km_s::numeric / 4)",
           "refId": "A"
         }
       ]
@@ -2959,7 +2975,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 187
+        "y": 249
       },
       "id": 111,
       "title": "Pipeline Health",
@@ -2982,10 +2998,10 @@
         }
       },
       "gridPos": {
-        "h": 7,
+        "h": 8,
         "w": 12,
         "x": 0,
-        "y": 188
+        "y": 250
       },
       "id": 56,
       "options": {
@@ -3027,10 +3043,10 @@
         }
       },
       "gridPos": {
-        "h": 7,
+        "h": 8,
         "w": 12,
         "x": 12,
-        "y": 188
+        "y": 250
       },
       "id": 57,
       "options": {
@@ -3076,5 +3092,5 @@
   "timezone": "utc",
   "title": "NEO Multi-Agency Dashboard",
   "uid": "neo-multi-agency-v4",
-  "version": 5
+  "version": 8
 }

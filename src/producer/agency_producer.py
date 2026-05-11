@@ -54,6 +54,8 @@ from src.agencies import (
 AGENCY_TOPIC = os.getenv("AGENCY_TOPIC", "agency_ingest")
 BATCH_SIZE = int(os.getenv("AGENCY_BATCH_SIZE", "500"))
 CYCLE_SLEEP = int(os.getenv("AGENCY_CYCLE_SLEEP", "120"))
+# When no asteroids need profiling, poll the DB this often (seconds) so new NeoWs rows are picked up quickly.
+IDLE_POLL_SECONDS = max(1, int(os.getenv("AGENCY_IDLE_POLL_SECONDS", "10")))
 MAX_CONCURRENT = int(os.getenv("AGENCY_MAX_CONCURRENT", "50"))
 
 # Rate limiter config — JPL SSD fair-use
@@ -255,10 +257,14 @@ class BulkCache:
         self.sentry_data: dict[str, dict] = {}   # designation → impact risk data
         self.cad_data: dict[str, list[dict]] = {} # designation → close-approach records
         self.esa_data: dict[str, dict] = {}       # designation → ESA risk data
-        self._last_refresh: float = 0
+        # None = never refreshed — must be stale on cold start (0 would make
+        # (monotonic() - 0) > TTL false for ~TTL seconds, skipping CAD/SBDB/Sentry/ESA bulk).
+        self._last_refresh: float | None = None
 
     @property
     def is_stale(self) -> bool:
+        if self._last_refresh is None:
+            return True
         return (time.monotonic() - self._last_refresh) > BULK_CACHE_TTL
 
     async def refresh(self, http_client: httpx.AsyncClient, jpl_limiter: TokenBucketRateLimiter):
@@ -497,7 +503,7 @@ def create_kafka_producer() -> KafkaProducer:
 async def ingest_fireballs(http_client: httpx.AsyncClient, jpl_limiter: TokenBucketRateLimiter, producer: KafkaProducer):
     """Fetch and publish recent fireball events."""
     fb = FireballClient(http_client=http_client, rate_limiter=jpl_limiter)
-    events = await fb.fetch(limit=200)
+    events = await fb.fetch(limit=None)
     if events:
         producer.send(AGENCY_TOPIC, key="fireball", value={
             "asteroid_id": "__fireball_batch__",
@@ -536,10 +542,8 @@ async def run_ingestion_cycle():
     ) as http_client:
 
         cycle = 0
+        idle_polls = 0
         while not _shutdown:
-            cycle += 1
-            console.rule(f"[pipeline]Agency Ingestion Cycle {cycle}")
-
             # ── Phase 1: Refresh bulk caches if stale ──
             if bulk_cache.is_stale:
                 await bulk_cache.refresh(http_client, jpl_limiter)
@@ -547,9 +551,13 @@ async def run_ingestion_cycle():
             # ── Phase 2: Load asteroids ──
             asteroids = await asyncio.to_thread(load_asteroids_to_profile, BATCH_SIZE)
             if not asteroids:
-                logger.info("No asteroids need profiling. Sleeping...")
-                await asyncio.sleep(CYCLE_SLEEP)
+                idle_polls += 1
+                await asyncio.sleep(IDLE_POLL_SECONDS)
                 continue
+
+            idle_polls = 0
+            cycle += 1
+            console.rule(f"[pipeline]Agency Ingestion Cycle {cycle}")
 
             # Pre-check how many are in the SBDB bulk cache
             bulk_hits = sum(

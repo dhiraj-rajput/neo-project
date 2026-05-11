@@ -25,15 +25,16 @@ class FireballClient(BaseClient):
             rate_limiter=rate_limiter,
         )
 
-    async def fetch(self, limit: int = 100) -> list[dict]:
+    async def fetch(self, limit: int = None) -> list[dict]:
         """
         Fetch recent fireball events.
         Returns list of flat dicts matching neo_fireball_events columns.
         """
-        data = await self._get("/fireball.api", params={
-            "limit": str(limit),
-            "req-loc": "true",
-        })
+        params = {"req-loc": "true"}
+        if limit is not None:
+            params["limit"] = str(limit)
+            
+        data = await self._get("/fireball.api", params=params)
 
         if not data or "data" not in data:
             return []

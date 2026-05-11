@@ -529,7 +529,7 @@ LEFT JOIN neo_agency_sentry sen ON sen.asteroid_id = c.asteroid_id
 LEFT JOIN neo_agency_sbdb   s   ON s.asteroid_id   = c.asteroid_id
 LEFT JOIN neo_agency_esa esa    ON esa.asteroid_id = c.asteroid_id
     OR LOWER(esa.esa_designation) = LOWER(s.designation)
-WHERE c.approach_date >= CURRENT_DATE
+WHERE c.approach_date >= '1899-12-30'
 ORDER BY c.approach_date ASC;
 
 -- Orbit class breakdown
