@@ -82,6 +82,10 @@ class CADClient(BaseClient):
         }
         if dist_max is not None:
             params["dist-max"] = dist_max
+        else:
+            # If no dist cutoff is specified, we must override the API's 0.05 AU default
+            # to ensure we capture all NEO approaches. 100 AU covers the entire solar system.
+            params["dist-max"] = "100"
 
         data = await self._get("/cad.api", params=params)
 

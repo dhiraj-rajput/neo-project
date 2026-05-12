@@ -61,7 +61,7 @@ class SBDBClient(BaseClient):
             "fields": SBDB_BULK_FIELDS,
             "sb-kind": "a",        # asteroids only
             "sb-ns": "n",          # numbered only (for speed — unnumbered fetched per-asteroid)
-            "sb-neo": "1",         # NEOs only
+            "sb-group": "neo",     # NEOs only
         })
 
         if not data or "data" not in data:
@@ -90,8 +90,8 @@ class SBDBClient(BaseClient):
                 "orbit_class": oc,
                 "orbit_class_name": None,  # Not available in query API
                 "orbit_id": entry.get("orbit_id"),
-                "is_neo": bool(entry.get("neo")),
-                "is_pha": bool(entry.get("pha")),
+                "is_neo": entry.get("neo") in ("Y", True),
+                "is_pha": entry.get("pha") in ("Y", True),
                 "des_alt": None,
 
                 # Orbital elements
@@ -158,7 +158,7 @@ class SBDBClient(BaseClient):
             results[pdes] = parsed
             # Also index by spkid for cross-referencing
             if entry.get("spkid"):
-                results[entry["spkid"]] = parsed
+                results[str(entry["spkid"])] = parsed
             # Index by name
             name = entry.get("name", "")
             if name:

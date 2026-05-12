@@ -96,8 +96,9 @@ class ESAClient(BaseClient):
 
         if entry is None:
             # Fuzzy match: try without year, numbered variants
+            norm_no_spaces = norm.replace(" ", "")
             for key, val in self._risk_cache.items():
-                if norm in key or key in norm:
+                if norm_no_spaces == key.replace(" ", ""):
                     entry = val
                     break
 

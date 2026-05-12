@@ -255,6 +255,7 @@ class BulkCache:
     def __init__(self):
         self.sbdb_data: dict[str, dict] = {}     # designation → orbital/physical data
         self.sentry_data: dict[str, dict] = {}   # designation → impact risk data
+        self.sentry_removed_data: dict[str, str] = {} # removed designations -> removal date
         self.cad_data: dict[str, list[dict]] = {} # designation → close-approach records
         self.esa_data: dict[str, dict] = {}       # designation → ESA risk data
         # None = never refreshed — must be stale on cold start (0 would make
@@ -285,10 +286,11 @@ class BulkCache:
         cad_client = CADClient(http_client=http_client, rate_limiter=jpl_limiter)
         esa_client = ESAClient(http_client=http_client)
 
-        # All four in parallel — different endpoints, no conflict
+        # All five in parallel — different endpoints, no conflict
         results = await asyncio.gather(
             sbdb_client.fetch_bulk_orbital(),
             sentry_client.fetch_all_active(),
+            sentry_client.fetch_all_removed(),
             cad_client.fetch_bulk(
                 date_min=CAD_DATE_MIN,
                 date_max=CAD_DATE_MAX,
@@ -304,25 +306,31 @@ class BulkCache:
         elif isinstance(results[0], Exception):
             logger.warning(f"[BulkCache] SBDB bulk failed: {results[0]}")
 
-        # Sentry
+        # Sentry Active
         if isinstance(results[1], dict):
             self.sentry_data = results[1]
         elif isinstance(results[1], Exception):
             logger.warning(f"[BulkCache] Sentry fetch failed: {results[1]}")
 
-        # CAD
+        # Sentry Removed
         if isinstance(results[2], dict):
-            self.cad_data = results[2]
+            self.sentry_removed_data = results[2]
         elif isinstance(results[2], Exception):
-            logger.warning(f"[BulkCache] CAD fetch failed: {results[2]}")
+            logger.warning(f"[BulkCache] Sentry removed fetch failed: {results[2]}")
+
+        # CAD
+        if isinstance(results[3], dict):
+            self.cad_data = results[3]
+        elif isinstance(results[3], Exception):
+            logger.warning(f"[BulkCache] CAD fetch failed: {results[3]}")
 
         # ESA
-        if isinstance(results[3], tuple):
-            esa_entries, _ = results[3]
+        if isinstance(results[4], tuple):
+            esa_entries, _ = results[4]
             if esa_entries:
                 self.esa_data = esa_entries
-        elif isinstance(results[3], Exception):
-            logger.warning(f"[BulkCache] ESA fetch failed: {results[3]}")
+        elif isinstance(results[4], Exception):
+            logger.warning(f"[BulkCache] ESA fetch failed: {results[4]}")
 
         self._last_refresh = time.monotonic()
         elapsed = time.monotonic() - t0
@@ -330,7 +338,7 @@ class BulkCache:
         logger.info(
             f"[BulkCache] Refreshed in {elapsed:.1f}s — "
             f"SBDB: {len(self.sbdb_data)} entries, "
-            f"Sentry: {len(self.sentry_data)} objects, "
+            f"Sentry: {len(self.sentry_data)} active, {len(self.sentry_removed_data)} removed, "
             f"CAD: {len(self.cad_data)} objects, "
             f"ESA: {len(self.esa_data)} objects"
         )
@@ -355,6 +363,8 @@ class BulkCache:
             entry = self.sentry_data.get(norm)
             if entry:
                 return entry
+            if norm in self.sentry_removed_data:
+                return {"status": "removed", "designation": cand, "removed_date": self.sentry_removed_data[norm]}
         return None
 
     def lookup_cad(self, designation: str, candidates: list[str]) -> list[dict] | None:
@@ -378,9 +388,10 @@ class BulkCache:
             entry = self.esa_data.get(norm)
             if entry:
                 return {"on_risk_list": True, **entry}
-            # Fuzzy match
+            # Fuzzy match: try without spaces
+            norm_no_spaces = norm.replace(" ", "")
             for key, val in self.esa_data.items():
-                if norm in key or key in norm:
+                if norm_no_spaces == key.replace(" ", ""):
                     return {"on_risk_list": True, **val}
         return {"on_risk_list": False}
 
@@ -457,6 +468,8 @@ async def fetch_full_profile(
         sentry_data = bulk_cache.lookup_sentry(asteroid_id, candidates)
         if sentry_data:
             profile["agencies"]["sentry"] = sentry_data
+        else:
+            profile["agencies"]["sentry"] = {"status": "not_found", "designation": candidates[0]}
 
     # ── 3. JPL CAD (from bulk cache — 0 API calls) ──
     if not _should_skip("JPL_CAD"):

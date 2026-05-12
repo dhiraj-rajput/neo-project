@@ -33,7 +33,7 @@ class SentryClient(BaseClient):
         )
         # Bulk cache: populated by fetch_all_active()
         self._active_cache: dict[str, dict] | None = None
-        self._removed_cache: set[str] | None = None
+        self._removed_cache: dict[str, str] | None = None
 
     # ── Bulk Fetch (1 request for ALL objects) ─────────────────
 
@@ -101,22 +101,22 @@ class SentryClient(BaseClient):
         logger.info(f"[Sentry] Loaded {len(data['data'])} active objects into cache")
         return cache
 
-    async def fetch_all_removed(self) -> set[str]:
+    async def fetch_all_removed(self) -> dict[str, str]:
         """
         Fetch ALL removed Sentry objects in ONE API call (mode R).
-        Returns set of normalised designations.
+        Returns dict of normalised designations mapping to removal date.
         """
         logger.info("[Sentry] Fetching removed objects list...")
         data = await self._get("/sentry.api", params={"removed": "1"})
 
-        removed: set[str] = set()
+        removed: dict[str, str] = {}
         if not data or "data" not in data:
             self._removed_cache = removed
             return removed
 
         for entry in data["data"]:
             des = entry.get("des", "")
-            removed.add(_normalise(des))
+            removed[_normalise(des)] = entry.get("removed")
 
         self._removed_cache = removed
         logger.info(f"[Sentry] Loaded {len(removed)} removed designations")
