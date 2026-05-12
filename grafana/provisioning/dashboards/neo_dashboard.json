@@ -13,7 +13,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 54
+        "y": 0
       },
       "id": 100,
       "title": "Pipeline Overview",
@@ -369,7 +369,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 58
+        "y": 4
       },
       "id": 101,
       "title": "Data Freshness & Coverage",
@@ -527,7 +527,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 65
+        "y": 11
       },
       "id": 102,
       "title": "NeoWs Trends",
@@ -631,7 +631,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 75
+        "y": 21
       },
       "id": 103,
       "title": "JPL Sentry \u2014 Impact Risk",
@@ -1078,7 +1078,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 100
+        "y": 46
       },
       "id": 104,
       "title": "ESA NEOCC Risk List",
@@ -1169,7 +1169,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 111
+        "y": 57
       },
       "id": 105,
       "title": "Cross-Agency Analysis",
@@ -1646,7 +1646,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 161
+        "y": 107
       },
       "id": 106,
       "title": "JPL CAD Close Approaches",
@@ -1877,7 +1877,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 187
+        "y": 133
       },
       "id": 107,
       "title": "SBDB \u2014 Orbital & Physical",
@@ -1916,7 +1916,8 @@
         "tooltip": {
           "mode": "multi"
         },
-        "xTickLabelRotation": 0
+        "xTickLabelRotation": 45,
+        "xTickLabelSpacing": 0
       },
       "title": "Orbit Class Distribution",
       "type": "barchart",
@@ -1957,7 +1958,7 @@
       "options": {
         "barWidth": 0.6,
         "groupWidth": 0.7,
-        "stacking": "normal",
+        "stacking": "none",
         "legend": {
           "displayMode": "list",
           "placement": "bottom"
@@ -1965,7 +1966,8 @@
         "tooltip": {
           "mode": "multi"
         },
-        "xTickLabelRotation": 0
+        "xTickLabelRotation": 45,
+        "xTickLabelSpacing": 0
       },
       "title": "PHA vs Non-PHA by Class",
       "type": "barchart",
@@ -2263,7 +2265,7 @@
       },
       "gridPos": {
         "h": 4,
-        "w": 4,
+        "w": 8,
         "x": 0,
         "y": 215
       },
@@ -2319,8 +2321,8 @@
       },
       "gridPos": {
         "h": 4,
-        "w": 4,
-        "x": 4,
+        "w": 8,
+        "x": 8,
         "y": 215
       },
       "id": 43,
@@ -2375,8 +2377,8 @@
       },
       "gridPos": {
         "h": 4,
-        "w": 4,
-        "x": 8,
+        "w": 8,
+        "x": 16,
         "y": 215
       },
       "id": 44,
@@ -2423,10 +2425,10 @@
         }
       },
       "gridPos": {
-        "h": 4,
-        "w": 12,
-        "x": 12,
-        "y": 215
+        "h": 12,
+        "w": 24,
+        "x": 0,
+        "y": 219
       },
       "id": 45,
       "options": {
@@ -2468,10 +2470,10 @@
         }
       },
       "gridPos": {
-        "h": 7,
+        "h": 10,
         "w": 12,
         "x": 0,
-        "y": 219
+        "y": 231
       },
       "id": 46,
       "options": {
@@ -2484,7 +2486,9 @@
         },
         "tooltip": {
           "mode": "multi"
-        }
+        },
+        "xTickLabelRotation": 45,
+        "xTickLabelSpacing": 0
       },
       "title": "Annual Summary",
       "type": "barchart",
@@ -2510,10 +2514,10 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 7,
+        "h": 10,
         "w": 12,
         "x": 12,
-        "y": 219
+        "y": 231
       },
       "id": 47,
       "options": {
@@ -2556,10 +2560,10 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 7,
+        "h": 8,
         "w": 8,
         "x": 0,
-        "y": 226
+        "y": 241
       },
       "id": 48,
       "options": {
@@ -2611,10 +2615,10 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 7,
+        "h": 8,
         "w": 8,
         "x": 8,
-        "y": 226
+        "y": 241
       },
       "id": 49,
       "options": {
@@ -2656,10 +2660,10 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 7,
+        "h": 8,
         "w": 8,
         "x": 16,
-        "y": 226
+        "y": 241
       },
       "id": 50,
       "options": {
@@ -2688,7 +2692,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 233
+        "y": 249
       },
       "id": 109,
       "title": "Discovery & Observations",
@@ -2711,10 +2715,10 @@
       },
       "description": "Known MPC sites first; (no site in SBDB) counts rows where SBDB has no discovery_site (data is still loaded).",
       "gridPos": {
-        "h": 6,
+        "h": 10,
         "w": 12,
         "x": 0,
-        "y": 234
+        "y": 250
       },
       "id": 51,
       "options": {
@@ -2766,10 +2770,10 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 6,
+        "h": 10,
         "w": 12,
         "x": 12,
-        "y": 234
+        "y": 250
       },
       "id": 52,
       "options": {
@@ -2807,7 +2811,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 240
+        "y": 260
       },
       "id": 110,
       "title": "Velocity & Miss Distance",
@@ -2830,10 +2834,10 @@
         }
       },
       "gridPos": {
-        "h": 8,
+        "h": 10,
         "w": 12,
         "x": 0,
-        "y": 241
+        "y": 261
       },
       "id": 53,
       "options": {
@@ -2879,10 +2883,10 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 8,
+        "h": 10,
         "w": 6,
         "x": 12,
-        "y": 241
+        "y": 261
       },
       "id": 54,
       "options": {
@@ -2934,10 +2938,10 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 8,
+        "h": 10,
         "w": 6,
         "x": 18,
-        "y": 241
+        "y": 261
       },
       "id": 55,
       "options": {
@@ -2975,7 +2979,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 249
+        "y": 271
       },
       "id": 111,
       "title": "Pipeline Health",
@@ -2998,10 +3002,10 @@
         }
       },
       "gridPos": {
-        "h": 8,
+        "h": 10,
         "w": 12,
         "x": 0,
-        "y": 250
+        "y": 272
       },
       "id": 56,
       "options": {
@@ -3043,10 +3047,10 @@
         }
       },
       "gridPos": {
-        "h": 8,
+        "h": 10,
         "w": 12,
         "x": 12,
-        "y": 250
+        "y": 272
       },
       "id": 57,
       "options": {

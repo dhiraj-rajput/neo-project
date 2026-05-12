@@ -536,7 +536,25 @@ ORDER BY c.approach_date ASC;
 CREATE OR REPLACE VIEW neo_orbit_class_dist AS
 SELECT
     orbit_class,
-    orbit_class_name,
+    CASE orbit_class
+        WHEN 'APO' THEN 'Apollo'
+        WHEN 'AMO' THEN 'Amor'
+        WHEN 'ATE' THEN 'Aten'
+        WHEN 'IEO' THEN 'Atira'
+        WHEN 'MCA' THEN 'Mars-crossing Asteroid'
+        WHEN 'OMB' THEN 'Outer Main-belt Asteroid'
+        WHEN 'TJN' THEN 'Jupiter Trojan'
+        WHEN 'CEN' THEN 'Centaur'
+        WHEN 'TNO' THEN 'TransNeptunian Object'
+        WHEN 'JFC' THEN 'Jupiter-family Comet'
+        WHEN 'HTC' THEN 'Halley-type Comet'
+        WHEN 'ETc' THEN 'Encke-type Comet'
+        WHEN 'HYA' THEN 'Hyperbolic Asteroid'
+        WHEN 'HYC' THEN 'Hyperbolic Comet'
+        WHEN 'PAR' THEN 'Parabolic Asteroid'
+        WHEN 'PAC' THEN 'Parabolic Comet'
+        ELSE COALESCE(NULLIF(orbit_class_name, ''), orbit_class)
+    END AS orbit_class_name,
     COUNT(*) AS total,
     COUNT(*) FILTER (WHERE is_pha) AS pha_count,
     AVG(diameter_km) AS avg_diameter_km,
@@ -545,7 +563,27 @@ SELECT
     AVG(t_jup) AS avg_t_jup
 FROM neo_agency_sbdb
 WHERE orbit_class IS NOT NULL
-GROUP BY orbit_class, orbit_class_name
+GROUP BY 
+    orbit_class, 
+    CASE orbit_class
+        WHEN 'APO' THEN 'Apollo'
+        WHEN 'AMO' THEN 'Amor'
+        WHEN 'ATE' THEN 'Aten'
+        WHEN 'IEO' THEN 'Atira'
+        WHEN 'MCA' THEN 'Mars-crossing Asteroid'
+        WHEN 'OMB' THEN 'Outer Main-belt Asteroid'
+        WHEN 'TJN' THEN 'Jupiter Trojan'
+        WHEN 'CEN' THEN 'Centaur'
+        WHEN 'TNO' THEN 'TransNeptunian Object'
+        WHEN 'JFC' THEN 'Jupiter-family Comet'
+        WHEN 'HTC' THEN 'Halley-type Comet'
+        WHEN 'ETc' THEN 'Encke-type Comet'
+        WHEN 'HYA' THEN 'Hyperbolic Asteroid'
+        WHEN 'HYC' THEN 'Hyperbolic Comet'
+        WHEN 'PAR' THEN 'Parabolic Asteroid'
+        WHEN 'PAC' THEN 'Parabolic Comet'
+        ELSE COALESCE(NULLIF(orbit_class_name, ''), orbit_class)
+    END
 ORDER BY total DESC;
 
 -- Fireball annual summary

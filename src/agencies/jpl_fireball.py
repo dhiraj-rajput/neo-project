@@ -30,7 +30,7 @@ class FireballClient(BaseClient):
         Fetch recent fireball events.
         Returns list of flat dicts matching neo_fireball_events columns.
         """
-        params = {"req-loc": "true"}
+        params = {}
         if limit is not None:
             params["limit"] = str(limit)
             

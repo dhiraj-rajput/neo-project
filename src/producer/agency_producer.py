@@ -85,12 +85,12 @@ signal.signal(signal.SIGTERM, _handle_signal)
 
 # ── Designation Utilities ────────────────────────────────────
 
-def extract_designation_candidates(asteroid_id: str, name: str | None = None) -> list[str]:
+def extract_designation_candidates(asteroid_id: str | int, name: str | None = None) -> list[str]:
     """Build a prioritised list of identifiers to try across APIs."""
     candidates = []
 
     if name:
-        name = name.strip()
+        name = str(name).strip()
         num_match = re.match(r"^(\d+)\s", name)
         if num_match:
             candidates.append(num_match.group(1))
@@ -103,8 +103,10 @@ def extract_designation_candidates(asteroid_id: str, name: str | None = None) ->
         if clean_name and clean_name not in candidates:
             candidates.append(clean_name)
 
-    if asteroid_id and asteroid_id not in candidates:
-        candidates.append(asteroid_id)
+    if asteroid_id:
+        ast_id_str = str(asteroid_id).strip()
+        if ast_id_str not in candidates:
+            candidates.append(ast_id_str)
 
     return candidates
 
@@ -443,7 +445,7 @@ async def fetch_full_profile(
                 des = sbdb_data["designation"]
                 candidates = [des] + [c for c in candidates if c != des]
             if sbdb_data.get("spkid"):
-                spkid = sbdb_data["spkid"]
+                spkid = str(sbdb_data["spkid"]).strip()
                 if spkid not in candidates:
                     candidates.append(spkid)
         else:
@@ -458,7 +460,7 @@ async def fetch_full_profile(
                         des = sbdb_result["designation"]
                         candidates = [des] + [c for c in candidates if c != des]
                     if sbdb_result.get("spkid"):
-                        spkid = sbdb_result["spkid"]
+                        spkid = str(sbdb_result["spkid"]).strip()
                         if spkid not in candidates:
                             candidates.append(spkid)
                     break
