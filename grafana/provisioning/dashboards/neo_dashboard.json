@@ -2187,7 +2187,7 @@
             "uid": "TimescaleDB"
           },
           "format": "table",
-          "rawSql": "SELECT condition_code::text || ' - ' || CASE WHEN condition_code::text = '0' THEN 'Highly Certain' WHEN condition_code::text IN ('1','2','3') THEN 'Certain' WHEN condition_code::text IN ('4','5','6') THEN 'Moderate' WHEN condition_code::text IN ('7','8') THEN 'Uncertain' WHEN condition_code::text = '9' THEN 'Highly Uncertain' ELSE 'Unknown' END AS \"Code\", COUNT(*) AS \"Count\" FROM neo_agency_sbdb WHERE condition_code IS NOT NULL GROUP BY condition_code ORDER BY condition_code",
+          "rawSql": "SELECT condition_code::text || ' - ' || CASE WHEN condition_code::text = '0' THEN 'Highly Certain' WHEN condition_code::text IN ('1','2','3') THEN 'Certain' WHEN condition_code::text IN ('4','5','6') THEN 'Moderate' WHEN condition_code::text IN ('7','8') THEN 'Uncertain' WHEN condition_code::text = '9' THEN 'Highly Uncertain' ELSE 'Unknown' END AS \"Code\", COUNT(*) AS \"Count\" FROM neo_agency_sbdb WHERE condition_code IS NOT NULL GROUP BY condition_code ORDER BY CASE WHEN condition_code ~ '^[0-9]+$' THEN CAST(condition_code AS integer) ELSE 999 END",
           "refId": "A"
         }
       ]
@@ -2745,7 +2745,7 @@
             "uid": "TimescaleDB"
           },
           "format": "table",
-          "rawSql": "SELECT site AS \"Site\", cnt AS \"Count\" FROM (\n  SELECT\n    CASE WHEN discovery_site IS NULL OR BTRIM(discovery_site) = '' THEN '(no site in SBDB)'\n         ELSE BTRIM(discovery_site) END AS site,\n    COUNT(*)::bigint AS cnt\n  FROM neo_agency_sbdb\n  GROUP BY 1\n) x\nORDER BY (CASE WHEN site = '(no site in SBDB)' THEN 1 ELSE 0 END), cnt DESC\nLIMIT 12",
+          "rawSql": "SELECT site AS \"Site\", cnt AS \"Count\" FROM (\n  SELECT\n    COALESCE(NULLIF(TRIM(discovery_site), ''), '(no site in SBDB)') AS site,\n    COUNT(*)::bigint AS cnt\n  FROM neo_agency_sbdb\n  GROUP BY 1\n) x\nORDER BY (site = '(no site in SBDB)') ASC, cnt DESC\nLIMIT 12",
           "refId": "A"
         }
       ]
