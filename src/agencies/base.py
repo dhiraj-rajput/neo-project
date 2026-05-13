@@ -95,20 +95,23 @@ class BaseClient:
         http_client: httpx.AsyncClient | None = None,
         semaphore: asyncio.Semaphore | None = None,
         rate_limiter: TokenBucketRateLimiter | None = None,
+        timeout: float | None = 30.0,
     ):
         self.name = name
         self.base_url = base_url.rstrip("/")
         self.rate_limit = rate_limit
         self._client = http_client
         self._owns_client = http_client is None
+        self._custom_timeout = timeout
         # Prefer explicit rate_limiter; fall back to semaphore for compat
         self._rate_limiter = rate_limiter
         self._semaphore = semaphore if rate_limiter is None else None
 
     async def _ensure_client(self) -> httpx.AsyncClient:
         if self._client is None:
+            timeout_val = self._custom_timeout if self._custom_timeout is not None else 30.0
             self._client = httpx.AsyncClient(
-                timeout=httpx.Timeout(30.0, connect=10.0),
+                timeout=httpx.Timeout(timeout_val, connect=10.0),
                 follow_redirects=True,
                 headers={"User-Agent": "NEO-Orbital-Tracker/3.0 (Research)"},
             )
@@ -187,10 +190,13 @@ class BaseClient:
         """Core request loop with structured status tracking."""
         client = await self._ensure_client()
         url = f"{self.base_url}{path}" if path.startswith("/") else path
+        
+        # Use the client's configured timeout
+        timeout_val = self._custom_timeout if self._custom_timeout is not None else 30.0
 
         for attempt in range(max_retries):
             try:
-                kwargs: dict = {"timeout": 30.0}
+                kwargs: dict = {"timeout": timeout_val}
                 if params:
                     kwargs["params"] = params
                 if json_body:
@@ -260,7 +266,8 @@ class BaseClient:
             except (httpx.ConnectError, httpx.ConnectTimeout,
                     httpx.ReadTimeout, httpx.RemoteProtocolError) as exc:
                 if attempt == max_retries - 1:
-                    logger.warning(f"[{self.name}] Network error after {max_retries} retries: {exc}")
+                    exc_msg = str(exc) or f"{type(exc).__name__} (no details)"
+                    logger.warning(f"[{self.name}] Network error after {max_retries} retries: {exc_msg}")
                     return None, FetchStatus(self.name, None, type(exc).__name__)
 
             except Exception as exc:

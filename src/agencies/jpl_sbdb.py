@@ -44,6 +44,7 @@ class SBDBClient(BaseClient):
             http_client=http_client,
             semaphore=semaphore,
             rate_limiter=rate_limiter,
+            timeout=60.0,  # Bulk query for all NEOs can be slow
         )
 
     # ── Bulk Fetch (sbdb_query.api) ───────────────────────────

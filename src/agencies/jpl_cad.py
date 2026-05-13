@@ -35,6 +35,7 @@ class CADClient(BaseClient):
             http_client=http_client,
             semaphore=semaphore,
             rate_limiter=rate_limiter,
+            timeout=120.0,  # Large historical bulk queries need longer timeout
         )
 
     async def fetch(self, designation: str) -> list[dict]:
