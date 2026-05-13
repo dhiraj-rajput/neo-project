@@ -27,7 +27,6 @@ Performance Architecture:
 """
 
 import asyncio
-import hashlib
 import json
 import os
 import re
@@ -146,11 +145,7 @@ def _db():
 
 
 def load_asteroids_to_profile(limit: int = BATCH_SIZE) -> list[dict]:
-    """
-    Load asteroids needing agency profiling.
-    Ensures ALL asteroids in neo_close_approaches eventually get profiled.
-    Strategy: prioritize stale records (>7 days old), then never-profiled asteroids.
-    """
+    """Load asteroids needing agency profiling (never-profiled or stale)."""
     with _db() as conn:
         with conn.cursor() as cur:
             # 1. Fetch stale records first (fast index scan on small table)
@@ -169,19 +164,20 @@ def load_asteroids_to_profile(limit: int = BATCH_SIZE) -> list[dict]:
             if len(stale) >= limit:
                 return stale
 
-            # 2. Fetch never-profiled records from neo_close_approaches
-            # (not in SBDB or Sentry tables)
+            # 2. Fetch never-profiled records using Recursive CTE (Skip Scan)
             remaining = limit - len(stale)
             cur.execute("""
-                SELECT DISTINCT n.asteroid_id, n.name
-                FROM neo_close_approaches n
-                WHERE NOT EXISTS (
-                    SELECT 1 FROM neo_agency_sbdb s WHERE s.asteroid_id = n.asteroid_id
+                WITH RECURSIVE t AS (
+                    SELECT MIN(asteroid_id) AS asteroid_id FROM neo_close_approaches
+                    UNION ALL
+                    SELECT (SELECT MIN(asteroid_id) FROM neo_close_approaches WHERE asteroid_id > t.asteroid_id)
+                    FROM t WHERE t.asteroid_id IS NOT NULL
                 )
-                AND NOT EXISTS (
-                    SELECT 1 FROM neo_agency_sentry se WHERE se.asteroid_id = n.asteroid_id
-                )
-                ORDER BY n.ingestion_time ASC
+                SELECT t.asteroid_id,
+                       (SELECT name FROM neo_close_approaches WHERE asteroid_id = t.asteroid_id LIMIT 1) as name
+                FROM t
+                WHERE t.asteroid_id IS NOT NULL
+                  AND NOT EXISTS (SELECT 1 FROM neo_agency_sbdb s WHERE s.asteroid_id = t.asteroid_id)
                 LIMIT %s
             """, (remaining,))
 
@@ -209,17 +205,6 @@ def batch_load_skip_statuses(asteroid_ids: list[str]) -> dict[tuple[str, str], d
                   AND not_found_until > now()
             """, (asteroid_ids,))
             return {(r[0], r[1]): r[2] for r in cur.fetchall()}
-
-
-def compute_profile_hash(profile: dict) -> str:
-    """
-    Generate a deterministic SHA256 hash of the profile content.
-    Excludes timestamp to ensure same data produces same hash.
-    """
-    hashable_profile = dict(profile)
-    hashable_profile.pop("timestamp", None)  # Remove timestamp for deterministic hashing
-    content = json.dumps(hashable_profile, sort_keys=True, default=str)
-    return hashlib.sha256(content.encode()).hexdigest()
 
 
 def batch_save_fetch_statuses(statuses: list[tuple]):
@@ -255,75 +240,6 @@ def batch_save_fetch_statuses(statuses: list[tuple]):
             conn.commit()
         except Exception as e:
             logger.warning(f"Failed to batch-save fetch statuses: {e}")
-            conn.rollback()
-
-
-def load_profile_hash(asteroid_id: str) -> str | None:
-    """
-    Load the last-published profile hash for an asteroid from the database.
-    Checks row_hash field in SBDB (primary), Sentry, and ESA tables.
-    Returns None if no previous hash exists (first profile or all outdated).
-    """
-    with _db() as conn:
-        try:
-            with conn.cursor() as cur:
-                # Try SBDB table first (most common source)
-                cur.execute(
-                    "SELECT row_hash FROM neo_agency_sbdb WHERE asteroid_id = %s LIMIT 1",
-                    (asteroid_id,)
-                )
-                row = cur.fetchone()
-                if row and row[0]:
-                    return row[0]
-                
-                # Check Sentry table as backup
-                cur.execute(
-                    "SELECT row_hash FROM neo_agency_sentry WHERE asteroid_id = %s LIMIT 1",
-                    (asteroid_id,)
-                )
-                row = cur.fetchone()
-                if row and row[0]:
-                    return row[0]
-                
-                # Check ESA table as last resort
-                cur.execute(
-                    "SELECT row_hash FROM neo_agency_esa WHERE asteroid_id = %s LIMIT 1",
-                    (asteroid_id,)
-                )
-                row = cur.fetchone()
-                if row and row[0]:
-                    return row[0]
-                
-                return None
-        except Exception as e:
-            logger.debug(f"Failed to load profile hash for {asteroid_id}: {e}")
-            return None
-
-
-def save_profile_hash(asteroid_id: str, profile_hash: str):
-    """
-    Store the profile hash after successful publication.
-    Updates row_hash in all agency tables (SBDB, Sentry, ESA) that have data for this asteroid.
-    Ensures consistency across all agency sources.
-    """
-    with _db() as conn:
-        try:
-            with conn.cursor() as cur:
-                # Update in all relevant tables (if they have data for this asteroid)
-                tables = [
-                    "neo_agency_sbdb",
-                    "neo_agency_sentry",
-                    "neo_agency_esa",
-                ]
-                
-                for table in tables:
-                    cur.execute(
-                        f"UPDATE {table} SET row_hash = %s, ingestion_time = now() WHERE asteroid_id = %s",
-                        (profile_hash, asteroid_id)
-                    )
-            conn.commit()
-        except Exception as e:
-            logger.debug(f"Failed to save profile hash for {asteroid_id}: {e}")
             conn.rollback()
 
 
@@ -600,37 +516,16 @@ def create_kafka_producer() -> KafkaProducer:
 # ── Fireball Batch Ingest ────────────────────────────────────
 
 async def ingest_fireballs(http_client: httpx.AsyncClient, jpl_limiter: TokenBucketRateLimiter, producer: KafkaProducer):
-    """
-    Fetch and publish recent fireball events with deduplication.
-    Avoids resending the same fireball batch if unchanged.
-    Applies same deduplication logic as asteroid profiles (across all APIs).
-    """
+    """Fetch and publish recent fireball events."""
     fb = FireballClient(http_client=http_client, rate_limiter=jpl_limiter)
     events = await fb.fetch(limit=None)
     if events:
-        # Create fireball batch payload
-        fireball_payload = {
+        producer.send(AGENCY_TOPIC, key="fireball", value={
             "asteroid_id": "__fireball_batch__",
             "agencies": {"fireball": events},
             "timestamp": datetime.now(timezone.utc).isoformat(),
-        }
-        
-        # ── Deduplication for fireballs ──
-        # Compute hash excluding timestamp
-        hashable_payload = dict(fireball_payload)
-        hashable_payload.pop("timestamp", None)
-        fireball_hash = compute_profile_hash(hashable_payload)
-        last_fireball_hash = await asyncio.to_thread(load_profile_hash, "__fireball_batch__")
-        
-        if fireball_hash != last_fireball_hash:
-            # Fireball data is new or changed — publish it
-            producer.send(AGENCY_TOPIC, key="fireball", value=fireball_payload)
-            # Save hash for deduplication
-            await asyncio.to_thread(save_profile_hash, "__fireball_batch__", fireball_hash)
-            logger.info(f"Published {len(events)} fireball events to Kafka")
-        else:
-            # Fireball data unchanged — skip to avoid duplicates
-            logger.debug(f"Skipping fireball batch: {len(events)} events unchanged")
+        })
+        logger.info(f"Published {len(events)} fireball events to Kafka")
 
 
 # ── Main Ingestion Loop ─────────────────────────────────────
@@ -715,19 +610,7 @@ async def run_ingestion_cycle():
                             http_client, jpl_limiter, bulk_cache,
                             skip_map,
                         )
-                        
-                        # ── Deduplication: Check if profile has changed ──
-                        current_hash = compute_profile_hash(profile)
-                        last_hash = await asyncio.to_thread(load_profile_hash, ast["asteroid_id"])
-                        
-                        if current_hash != last_hash:
-                            # Profile is new or has changed — publish it
-                            producer.send(AGENCY_TOPIC, key=ast["asteroid_id"], value=profile)
-                            # Save the new hash for next cycle
-                            await asyncio.to_thread(save_profile_hash, ast["asteroid_id"], current_hash)
-                        else:
-                            # Profile unchanged — skip publishing to avoid duplicates
-                            logger.debug(f"Skipping {ast['asteroid_id']}: profile unchanged")
+                        producer.send(AGENCY_TOPIC, key=ast["asteroid_id"], value=profile)
 
                         if statuses:
                             async with status_lock:
