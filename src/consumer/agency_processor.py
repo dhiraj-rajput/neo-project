@@ -25,6 +25,7 @@ import psycopg2.extras
 import psycopg2.pool
 from contextlib import contextmanager
 from kafka import KafkaConsumer, TopicPartition
+from kafka.admin import KafkaAdminClient, NewTopic
 
 from src.config import Config
 from src.logger import logger, console
@@ -522,6 +523,20 @@ def wait_for_partition_assignment(
     return False
 
 
+def ensure_topic(topic_name: str, num_partitions: int = 6, replication_factor: int = 1):
+    """Create a Kafka topic if it doesn't already exist."""
+    try:
+        admin = KafkaAdminClient(bootstrap_servers=Config.KAFKA_BOOTSTRAP_SERVERS)
+        if topic_name not in admin.list_topics():
+            logger.info(f"Creating missing Kafka topic: {topic_name}")
+            admin.create_topics([
+                NewTopic(name=topic_name, num_partitions=num_partitions, replication_factor=replication_factor)
+            ])
+        admin.close()
+    except Exception as e:
+        logger.warning(f"Topic verification failed for {topic_name}: {e}")
+
+
 # ══════════════════════════════════════════════════════════════
 # Main Consumer Loop
 # ══════════════════════════════════════════════════════════════
@@ -530,6 +545,8 @@ def main():
     console.rule("[pipeline]Agency Processor[/]")
     logger.info(f"Starting agency processor (topic={AGENCY_TOPIC}, group={CONSUMER_GROUP})")
     logger.info(f"Config: poll_max={POLL_MAX_RECORDS}, poll_timeout={POLL_TIMEOUT_MS}ms, progress_interval={PROGRESS_INTERVAL}s")
+
+    ensure_topic(AGENCY_TOPIC)
 
     consumer = KafkaConsumer(
         AGENCY_TOPIC,
