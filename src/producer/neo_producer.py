@@ -93,14 +93,15 @@ class CheckpointManager:
             except Exception as e:
                 logger.error(f"Failed to load checkpoint: {e}")
 
-    def register_window(self, start, end, status="PENDING"):
+    def register_window(self, start, end, status="PENDING", attempt=1):
         # Explicitly tracking every window this run
         self.windows[start] = {
             "window_start": start,
             "window_end": end,
             "status": status,
             "records": 0,
-            "error": None
+            "error": None,
+            "attempt": attempt
         }
 
     def mark_success(self, start, end, records):
@@ -109,7 +110,8 @@ class CheckpointManager:
             "window_end": end,
             "status": "SUCCESS",
             "records": records,
-            "error": None
+            "error": None,
+            "attempt": self.windows.get(start, {}).get("attempt", 1)
         }
         self.save()
 
@@ -119,7 +121,8 @@ class CheckpointManager:
             "window_end": end,
             "status": "FAILED",
             "records": 0,
-            "error": str(error)
+            "error": str(error),
+            "attempt": self.windows.get(start, {}).get("attempt", 1)
         }
         self.save()
 
@@ -129,9 +132,19 @@ class CheckpointManager:
             "window_end": end,
             "status": "SKIPPED",
             "records": 0,
-            "reason": reason
+            "reason": reason,
+            "attempt": self.windows.get(start, {}).get("attempt", 1)
         }
         self.save()
+    
+    def increment_attempt(self, start):
+        """Increment attempt count for a window before retry."""
+        if start in self.windows:
+            current_attempt = self.windows[start].get("attempt", 1)
+            self.windows[start]["attempt"] = current_attempt + 1
+            # Reset status to PENDING for retry
+            self.windows[start]["status"] = "PENDING"
+            self.save()
 
     def finalize(self, termination_reason="COMPLETED", total_records=0):
         # Calculate stats
@@ -216,7 +229,7 @@ class MultiKeyRateLimiter:
         self.lock = threading.Lock()
 
         self.key_cooldowns = {}      # key -> ready_at
-        self.failed_this_round = set()
+        self.key_failures_this_round = {}  # key -> count of failures in this round
         self.key_remaining = {}      # key -> remaining requests in current window
 
         self.global_sleep_until = 0
@@ -231,6 +244,7 @@ class MultiKeyRateLimiter:
     def get_key(self):
         """
         Blocking call. Tries ALL keys before declaring global exhaustion.
+        Checks individual key cooldowns and recovers keys when their cooldown expires.
         """
         while True:
             now = time.time()
@@ -244,23 +258,28 @@ class MultiKeyRateLimiter:
                     if self.global_sleep_until > 0 and now >= self.global_sleep_until:
                          self.global_sleep_until = 0
                     
+                    # Check if any keys can be recovered (cooldown expired)
+                    for k in self.keys:
+                        if k in self.key_cooldowns and now >= self.key_cooldowns[k]:
+                            del self.key_cooldowns[k]
+                            self.key_failures_this_round[k] = 0
+                            logger.info(f"Key ...{k[-4:]} cooldown expired, recovered.")
+                    
                     # Try to find a ready key
                     for k in self.keys:
-                        if (
-                            k not in self.failed_this_round and
-                            now >= self.key_cooldowns.get(k, 0)
-                        ):
+                        if now >= self.key_cooldowns.get(k, 0):
                             return k
 
-                    # All keys have failed this round? -> global sleep
-                    if len(self.failed_this_round) == len(self.keys):
-                        self.failed_this_round.clear()
+                    # All keys on cooldown? -> global sleep
+                    if len(self.key_cooldowns) == len(self.keys):
+                        self.key_cooldowns.clear()
+                        self.key_failures_this_round.clear()
                         self.global_sleep_until = (
                             now + self.base_cooldown + self.buffer
                         )
                         wait = self.global_sleep_until - now
                         logger.warning(
-                            f"⏸ ALL keys exhausted. Global sleep {wait/60:.1f} minutes"
+                            f"⏸ ALL keys on cooldown. Global sleep {wait/60:.1f} minutes"
                         )
                         # Notify Spark we are sleeping
                         PipelineStatus.update("SLEEPING", wake_at=self.global_sleep_until, reason="RATE_LIMIT")
@@ -269,8 +288,7 @@ class MultiKeyRateLimiter:
                         force_flush()
 
                     else:
-                        # Keys still cooling from previous rounds or individual backoffs
-                        # Wait for earliest cooldown
+                        # Keys still cooling - wait for earliest cooldown
                         earliest = min(self.key_cooldowns.values(), default=now + 5)
                         wait = earliest - now
 
@@ -294,27 +312,24 @@ class MultiKeyRateLimiter:
 
     def report_429(self, key, cooldown=None):
         """
-        Mark failure for this round. Uses Retry-After header if available,
+        Mark key on cooldown. Uses Retry-After header if available,
         otherwise falls back to base_cooldown (1 hour).
         """
         if cooldown is None:
             cooldown = self.base_cooldown
         with self.lock:
-            if key in self.failed_this_round:
-                return # Already handled, avoid log spam
-
-            self.failed_this_round.add(key)
+            self.key_failures_this_round[key] = self.key_failures_this_round.get(key, 0) + 1
             self.key_cooldowns[key] = time.time() + cooldown
             logger.warning(
-                f"Key ...{key[-4:]} hit 429. Cooldown {cooldown}s. Marked failed for this round."
+                f"Key ...{key[-4:]} hit 429. Cooldown {cooldown}s ({self.key_failures_this_round[key]} failures)."
             )
 
     def report_success(self, key):
         """
-        Clear key from failed_this_round if it succeeds.
+        Clear key failure count on success.
         """
         with self.lock:
-            self.failed_this_round.discard(key)
+            self.key_failures_this_round[key] = 0
 
 # =========================================================
 # WORKER FUNCTION
@@ -566,7 +581,59 @@ def run_cycle(target_run_id=None):
                             progress.advance(main_task)
 
         sys.stdout.write("\n")
-        logger.info("Run execution finished. Flushing Kafka.")
+        logger.info("Run execution finished. Processing failed windows for retry.")
+        
+        # ===== RETRY PHASE: Process failed windows =====
+        failed_windows = [
+            (w["window_start"], w["window_end"], w.get("attempt", 1))
+            for w in checkpoint.windows.values()
+            if w["status"] == "FAILED" and w.get("attempt", 1) < 3
+        ]
+        
+        if failed_windows:
+            logger.info(f"Found {len(failed_windows)} failed windows to retry (max 3 attempts).")
+            
+            retry_count = 0
+            for start_str, end_str, current_attempt in failed_windows:
+                retry_count += 1
+                attempt_num = current_attempt + 1
+                logger.info(f"[Retry {retry_count}/{len(failed_windows)}] Attempt {attempt_num}/3 for {start_str} -> {end_str}")
+                
+                checkpoint.increment_attempt(start_str)
+                
+                # Single retry attempt
+                result = fetch_and_send(start_str, end_str, limiter, producer, session)
+                
+                if result == "RETRY":
+                    logger.warning(f"Window {start_str} still rate limited, will try again next run")
+                    checkpoint.mark_failed(start_str, end_str, "Rate limited on retry")
+                    
+                elif result == "NOT_FOUND":
+                    hold_until = mark_window_not_found(start_str, end_str)
+                    checkpoint.mark_skipped(
+                        start_str,
+                        end_str,
+                        f"NeoWs 404 on retry; retry held until {hold_until.date()}"
+                    )
+                    
+                elif result is not False:
+                    # Success
+                    count = int(result)
+                    checkpoint.mark_success(start_str, end_str, count)
+                    total_sent += count
+                    logger.info(f"Retry successful for {start_str}: {count} records")
+                    
+                    # Flush after retry success
+                    if (total_sent - last_flush_count) >= 5000:
+                        producer.flush(timeout=10)
+                        last_flush_count = total_sent
+                        
+                else:
+                    # Still failed
+                    checkpoint.mark_failed(start_str, end_str, "Failed on retry attempt")
+                    logger.error(f"Retry failed for {start_str} (attempt {attempt_num}/3)")
+            
+            logger.info(f"Retry phase complete. {retry_count} windows processed.")
         
     finally:
         # Graceful shutdown
@@ -592,8 +659,15 @@ def run_cycle(target_run_id=None):
     table.add_row("Total Windows", str(stats['total_windows']))
     table.add_row("Successful", f"[green]{stats['successful_windows']}[/green]")
     table.add_row("Failed", f"[red]{stats['failed_windows']}[/red]")
+    table.add_row("Skipped", f"[yellow]{stats['skipped_windows']}[/yellow]")
     table.add_row("Pending", f"[yellow]{stats['pending_windows']}[/yellow]")
     table.add_row("📦 Total Records", f"[bold white]{stats['total_records_sent']:,}[/bold white]")
+    
+    # Show windows with retry attempts
+    windows_with_attempts = {w["window_start"]: w.get("attempt", 1) for w in checkpoint.windows.values() if w.get("attempt", 1) > 1}
+    if windows_with_attempts:
+        table.add_row("Windows Retried", str(len(windows_with_attempts)))
+    
     console.print(table)
 
 def run_delta_cycle():
